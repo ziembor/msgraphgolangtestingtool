@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
@@ -23,11 +24,11 @@ import (
 	"golang.org/x/crypto/pkcs12"
 )
 
-const version = "1.12.0"
+const version = "1.12.4"
 
 var csvWriter *csv.Writer
 var csvFile *os.File
-
+var verboseMode bool
 
 // applyEnvVars applies environment variable values to flags that weren't explicitly set via command line
 func applyEnvVars(envMap map[string]*string) {
@@ -39,7 +40,7 @@ func applyEnvVars(envMap map[string]*string) {
 
 	// Map flag names to environment variable names
 	flagToEnv := map[string]string{
-		"tenantid":       "MSGRAPHTENANT",
+		"tenantid":       "MSGRAPHTENANTID",
 		"clientid":       "MSGRAPHCLIENTID",
 		"secret":         "MSGRAPHSECRET",
 		"pfx":            "MSGRAPHPFX",
@@ -108,18 +109,24 @@ func main() {
 	// Proxy configuration
 	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)")
 
-action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
+	// Verbose mode
+	verbose := flag.Bool("verbose", false, "Enable verbose output (shows configuration, tokens, API details)")
+
+	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
 	flag.Parse()
+
+	// Set global verbose flag
+	verboseMode = *verbose
 
 	// Check version flag
 	if *showVersion {
-		fmt.Printf("Microsoft Graph Testing Tool v%s\n", version)
+		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
 		os.Exit(0)
 	}
 
 	// Apply environment variables if flags not set via command line
 	applyEnvVars(map[string]*string{
-		"MSGRAPHTENANT":        tenantID,
+		"MSGRAPHTENANTID":      tenantID,
 		"MSGRAPHCLIENTID":      clientID,
 		"MSGRAPHSECRET":        secret,
 		"MSGRAPHPFX":           pfxPath,
@@ -137,6 +144,11 @@ action := flag.String("action", "getevents", "Action to perform: getevents, send
 		"MSGRAPHACTION":        action,
 		"MSGRAPHPROXY":         proxyURL,
 	})
+
+	// Print verbose configuration if enabled
+	if verboseMode {
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, *toRaw, *ccRaw, *bccRaw, *subject, *body, *inviteSubject, *startTime, *endTime)
+	}
 
 	// Validation
 	if *tenantID == "" || *clientID == "" || *mailbox == "" {
@@ -163,10 +175,28 @@ action := flag.String("action", "getevents", "Action to perform: getevents, send
 		log.Fatalf("Authentication setup failed: %v", err)
 	}
 
+	// Get and display token information if verbose
+	if verboseMode {
+		ctx := context.Background()
+		token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
+			Scopes: []string{"https://graph.microsoft.com/.default"},
+		})
+		if err != nil {
+			logVerbose("Warning: Could not retrieve token for verbose display: %v", err)
+		} else {
+			printTokenInfo(token)
+		}
+	}
+
 	// Scopes for Application Permissions usually are https://graph.microsoft.com/.default
 	client, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{"https://graph.microsoft.com/.default"})
 	if err != nil {
 		log.Fatalf("Graph client initialization failed: %v", err)
+	}
+
+	if verboseMode {
+		logVerbose("Graph SDK client initialized successfully")
+		logVerbose("Target scope: https://graph.microsoft.com/.default")
 	}
 
 	ctx := context.Background()
@@ -213,24 +243,33 @@ func parseList(s string) []string {
 func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string) (azcore.TokenCredential, error) {
 	// 1. Client Secret
 	if secret != "" {
+		logVerbose("Authentication method: Client Secret")
+		logVerbose("Creating ClientSecretCredential...")
 		return azidentity.NewClientSecretCredential(tenantID, clientID, secret, nil)
 	}
 
 	// 2. PFX File
 	if pfxPath != "" {
+		logVerbose("Authentication method: PFX Certificate File")
+		logVerbose("PFX file path: %s", pfxPath)
 		pfxData, err := os.ReadFile(pfxPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read PFX file: %w", err)
 		}
+		logVerbose("PFX file read successfully (%d bytes)", len(pfxData))
 		return createCertCredential(tenantID, clientID, pfxData, pfxPass)
 	}
 
 	// 3. Windows Cert Store (Thumbprint)
 	if thumbprint != "" {
+		logVerbose("Authentication method: Windows Certificate Store")
+		logVerbose("Certificate thumbprint: %s", thumbprint)
+		logVerbose("Exporting certificate from CurrentUser\\My store...")
 		pfxData, tempPass, err := exportCertFromStore(thumbprint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export cert from store: %w", err)
 		}
+		logVerbose("Certificate exported successfully (%d bytes)", len(pfxData))
 		return createCertCredential(tenantID, clientID, pfxData, tempPass)
 	}
 
@@ -268,6 +307,7 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 // ... Rest of the functions (listEvents, sendEmail, createInvite) ...
 
 func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string) {
+	logVerbose("Calling Graph API: GET /users/%s/events", mailbox)
 	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, nil)
 	if err != nil {
 		var oDataError *odataerrors.ODataError
@@ -284,6 +324,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	events := result.GetValue()
 	eventCount := len(events)
 
+	logVerbose("API response received: %d events", eventCount)
 	fmt.Printf("Upcoming events for %s:\n", mailbox)
 
 	if eventCount == 0 {
@@ -342,6 +383,8 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	requestBody := users.NewItemSendMailPostRequestBody()
 	requestBody.SetMessage(message)
 
+	logVerbose("Calling Graph API: POST /users/%s/sendMail", senderMailbox)
+	logVerbose("Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
 	err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
 
 	status := "Success"
@@ -349,6 +392,7 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 		log.Printf("Error sending mail: %v", err)
 		status = fmt.Sprintf("Error: %v", err)
 	} else {
+		logVerbose("Email sent successfully via Graph API")
 		fmt.Printf("Email sent successfully from %s.\nTo: %v\nCc: %v\nBcc: %v\nSubject: %s\n", senderMailbox, to, cc, bcc, subject)
 	}
 
@@ -365,7 +409,7 @@ func createRecipients(emails []string) []models.Recipientable {
 		recipient := models.NewRecipient()
 		emailAddress := models.NewEmailAddress()
 		// Need to create a new variable for the address pointer
-		address := email 
+		address := email
 		emailAddress.SetAddress(&address)
 		recipient.SetEmailAddress(emailAddress)
 		recipients[i] = recipient
@@ -418,6 +462,8 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	event.SetEnd(endDateTime)
 
 	// Create the event
+	logVerbose("Calling Graph API: POST /users/%s/events", mailbox)
+	logVerbose("Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	createdEvent, err := client.Users().ByUserId(mailbox).Events().Post(ctx, event, nil)
 
 	status := "Success"
@@ -429,6 +475,8 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 		if createdEvent.GetId() != nil {
 			eventID = *createdEvent.GetId()
 		}
+		logVerbose("Calendar event created successfully via Graph API")
+		logVerbose("Event ID: %s", eventID)
 		fmt.Printf("Calendar invitation created in mailbox: %s\n", mailbox)
 		fmt.Printf("Subject: %s\n", subject)
 		fmt.Printf("Start: %s\n", startTime.Format("2006-01-02 15:04:05 MST"))
@@ -450,6 +498,7 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 		},
 	}
 
+	logVerbose("Calling Graph API: GET /users/%s/messages?$top=10&$orderby=receivedDateTime DESC", mailbox)
 	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
 	if err != nil {
 		log.Fatalf("Error fetching inbox for %s: %v", mailbox, err)
@@ -458,6 +507,7 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	messages := result.GetValue()
 	messageCount := len(messages)
 
+	logVerbose("API response received: %d messages", messageCount)
 	fmt.Printf("Newest 10 messages in inbox for %s:\n\n", mailbox)
 
 	if messageCount == 0 {
@@ -586,3 +636,177 @@ func writeCSVRow(row []string) {
 		csvWriter.Flush()
 	}
 }
+
+// Verbose logging helper
+func logVerbose(format string, args ...interface{}) {
+	if verboseMode {
+		prefix := "[VERBOSE] "
+		fmt.Printf(prefix+format+"\n", args...)
+	}
+}
+
+// Print verbose configuration summary
+func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, inviteSubject, startTime, endTime string) {
+	fmt.Println("========================================")
+	fmt.Println("VERBOSE MODE ENABLED")
+	fmt.Println("========================================")
+	fmt.Println()
+
+	// Display environment variables
+	fmt.Println("Environment Variables (MSGRAPH*):")
+	fmt.Println("----------------------------------")
+	envVars := getEnvVariables()
+	if len(envVars) == 0 {
+		fmt.Println("  (no MSGRAPH environment variables set)")
+	} else {
+		for key, value := range envVars {
+			// Mask sensitive values
+			displayValue := value
+			if key == "MSGRAPHSECRET" || key == "MSGRAPHPFXPASS" {
+				displayValue = maskSecret(value)
+			}
+			fmt.Printf("  %s = %s\n", key, displayValue)
+		}
+	}
+	fmt.Println()
+
+	fmt.Println("Final Configuration (after env vars + flags):")
+	fmt.Println("----------------------------------------------")
+	fmt.Printf("Version: %s\n", version)
+	fmt.Printf("Tenant ID: %s\n", tenantID)
+	fmt.Printf("Client ID: %s\n", clientID)
+	fmt.Printf("Mailbox: %s\n", mailbox)
+	fmt.Printf("Action: %s\n", action)
+
+	// Authentication method
+	fmt.Println()
+	fmt.Println("Authentication:")
+	if secret != "" {
+		fmt.Println("  Method: Client Secret")
+		// Mask the secret but show length
+		fmt.Printf("  Secret: %s (length: %d)\n", maskSecret(secret), len(secret))
+	} else if pfxPath != "" {
+		fmt.Println("  Method: PFX Certificate")
+		fmt.Printf("  PFX Path: %s\n", pfxPath)
+		if pfxPath != "" {
+			fmt.Println("  PFX Password: ******** (provided)")
+		}
+	} else if thumbprint != "" {
+		fmt.Println("  Method: Windows Certificate Store")
+		fmt.Printf("  Thumbprint: %s\n", thumbprint)
+	}
+
+	// Network configuration
+	if proxyURL != "" {
+		fmt.Println()
+		fmt.Println("Network Configuration:")
+		fmt.Printf("  Proxy: %s\n", proxyURL)
+	}
+
+	// Action-specific parameters
+	fmt.Println()
+	fmt.Println("Action Parameters:")
+	switch action {
+	case "sendmail":
+		fmt.Printf("  To: %s\n", ifEmpty(to, "(defaults to mailbox)"))
+		fmt.Printf("  CC: %s\n", ifEmpty(cc, "(none)"))
+		fmt.Printf("  BCC: %s\n", ifEmpty(bcc, "(none)"))
+		fmt.Printf("  Subject: %s\n", subject)
+		fmt.Printf("  Body: %s\n", truncate(body, 60))
+	case "sendinvite":
+		fmt.Printf("  Invite Subject: %s\n", inviteSubject)
+		fmt.Printf("  Start Time: %s\n", ifEmpty(startTime, "(now)"))
+		fmt.Printf("  End Time: %s\n", ifEmpty(endTime, "(start + 1 hour)"))
+	case "getevents", "getinbox":
+		fmt.Println("  (no additional parameters)")
+	}
+
+	fmt.Println()
+	fmt.Println("========================================")
+	fmt.Println()
+}
+
+// Print token information
+func printTokenInfo(token azcore.AccessToken) {
+	fmt.Println()
+	fmt.Println("Token Information:")
+	fmt.Println("------------------")
+	fmt.Printf("Token acquired successfully\n")
+	fmt.Printf("Expires at: %s\n", token.ExpiresOn.Format("2006-01-02 15:04:05 MST"))
+
+	// Calculate time until expiration
+	timeUntilExpiry := time.Until(token.ExpiresOn)
+	fmt.Printf("Valid for: %s\n", timeUntilExpiry.Round(time.Second))
+
+	// Show truncated token (first and last 10 characters for verification)
+	tokenStr := token.Token
+	if len(tokenStr) > 40 {
+		fmt.Printf("Token (truncated): %s...%s\n", tokenStr[:20], tokenStr[len(tokenStr)-20:])
+		fmt.Printf("Token length: %d characters\n", len(tokenStr))
+	} else {
+		fmt.Printf("Token: %s\n", tokenStr)
+	}
+
+	fmt.Println()
+}
+
+// Helper: Mask secret for display
+func maskSecret(secret string) string {
+	if len(secret) <= 8 {
+		return "********"
+	}
+	// Show first 4 and last 4 characters
+	return secret[:4] + "********" + secret[len(secret)-4:]
+}
+
+// Helper: Return default string if empty
+func ifEmpty(s, defaultVal string) string {
+	if s == "" {
+		return defaultVal
+	}
+	return s
+}
+
+// Helper: Truncate string with ellipsis
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// Get all MSGRAPH environment variables
+func getEnvVariables() map[string]string {
+	envVars := make(map[string]string)
+
+	// List of all MSGRAPH environment variables
+	msgraphEnvVars := []string{
+		"MSGRAPHTENANTID",
+		"MSGRAPHCLIENTID",
+		"MSGRAPHSECRET",
+		"MSGRAPHPFX",
+		"MSGRAPHPFXPASS",
+		"MSGRAPHTHUMBPRINT",
+		"MSGRAPHMAILBOX",
+		"MSGRAPHTO",
+		"MSGRAPHCC",
+		"MSGRAPHBCC",
+		"MSGRAPHSUBJECT",
+		"MSGRAPHBODY",
+		"MSGRAPHINVITESUBJECT",
+		"MSGRAPHSTART",
+		"MSGRAPHEND",
+		"MSGRAPHACTION",
+		"MSGRAPHPROXY",
+	}
+
+	for _, envVar := range msgraphEnvVars {
+		if value := os.Getenv(envVar); value != "" {
+			envVars[envVar] = value
+		}
+	}
+
+	return envVars
+}
+
+//END

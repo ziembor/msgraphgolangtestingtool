@@ -31,6 +31,12 @@ The tool is designed for **minimal external dependencies** — it compiles into 
 
 The project follows Semantic Versioning, but the **major version is locked at 1** and cannot be upgraded. All breaking changes or major features will be released as minor version increments within the 1.x.y branch.
 
+**Version Management:**
+- Current version is stored in the `VERSION` file at the project root
+- The version constant in `src/msgraphgolangtestingtool.go` must match the VERSION file
+- When updating the version, update BOTH files to maintain consistency
+- **IMPORTANT**: Future AI assistants should always read and update the VERSION file when making version changes
+
 ## Prerequisites
 
 * **Microsoft Entra ID (Azure AD):** App Registration.
@@ -69,11 +75,34 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 | `-proxy` | HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080). | No |
 | **Other** | | |
 | `-version` | Show version information. | No |
+| `-verbose` | Enable verbose output (shows configuration, tokens, API details). | No |
+
+### Verbose Mode
+
+Enable verbose output with the `-verbose` flag to see detailed diagnostic information:
+
+```powershell
+.\msgraphgolangtestingtool.exe -verbose -tenantid "..." -clientid "..." -secret "..." -mailbox "..." -action getevents
+```
+
+Verbose mode displays:
+- **Environment Variables**: All MSGRAPH* environment variables currently set (with sensitive values masked)
+- **Final Configuration**: All parameters and their final values (after environment variable processing and command-line flags)
+- **Authentication Details**: Method used, certificate info, masked secrets
+- **Token Information**: Expiration time, validity period, truncated token for verification
+- **API Call Details**: Endpoints being called, request parameters
+- **Response Information**: Number of items retrieved, operation results
+
+This is useful for:
+- Debugging configuration issues
+- Verifying which environment variables are set and being used
+- Troubleshooting authentication issues
+- Understanding the tool's behavior and parameter precedence
 
 ### Environment Variables
 
 All flags can be set via environment variables (Command Line flags take precedence).
-Prefix: `MSGRAPH` (e.g., `MSGRAPHTENANT`, `MSGRAPHCLIENTID`, `MSGRAPHPROXY`).
+Prefix: `MSGRAPH` (e.g., `MSGRAPHTENANTID`, `MSGRAPHCLIENTID`, `MSGRAPHPROXY`).
 
 ### Examples
 
@@ -141,8 +170,9 @@ This is a portable, single-binary Go CLI tool for interacting with Microsoft Gra
 **Platform**: Cross-platform (Windows, Linux, macOS), but `-thumbprint` auth is Windows-only.
 **Module name**: `msgraphgolangtestingtool` (defined in go.mod)
 **Go version**: 1.25+
+**Current Version**: See `VERSION` file in project root
 
-**Versioning Policy**: The major version of this project is locked at 1 and must not be upgraded. All changes, including breaking ones, must be released within the 1.x.y version range.
+**Versioning Policy**: The major version of this project is locked at 1 and must not be upgraded. All changes, including breaking ones, must be released within the 1.x.y version range. The version is maintained in two places: the `VERSION` file and `src/msgraphgolangtestingtool.go` (const version).
 
 ### CSV Logging
 
@@ -151,10 +181,15 @@ All operations are automatically logged to a CSV file in the Windows temp direct
 ## Build and Run Commands
 
 ```powershell
-# Build the executable
-go build -o msgraphgolangtestingtool.exe
+# Build the executable from project root
+cd src
+go build -o ../msgraphgolangtestingtool.exe
 
-# Run with Go (development)
+# Or build from project root using -C flag
+go build -C src -o msgraphgolangtestingtool.exe
+
+# Run with Go (development) from src directory
+cd src
 go run . [flags]
 
 # Example: List calendar events using client secret
@@ -170,14 +205,14 @@ go run . [flags]
 .\msgraphgolangtestingtool.exe -tenantid"YOUR_TENANT_ID" -clientid "YOUR_CLIENT_ID" -secret "YOUR_SECRET" -mailbox "user@example.com" -action getinbox
 
 # Example: Using environment variables (PowerShell)
-$env:MSGRAPHTENANT = "YOUR_TENANT_ID"
+$env:MSGRAPHTENANTID = "YOUR_TENANT_ID"
 $env:MSGRAPHCLIENTID = "YOUR_CLIENT_ID"
 $env:MSGRAPHSECRET = "YOUR_SECRET"
 $env:MSGRAPHMAILBOX = "user@example.com"
 .\msgraphgolangtestingtool.exe -action getevents
 
 # Example: Mix of environment variables and command-line flags (flags take precedence)
-$env:MSGRAPHTENANT = "YOUR_TENANT_ID"
+$env:MSGRAPHTENANTID = "YOUR_TENANT_ID"
 $env:MSGRAPHCLIENTID = "YOUR_CLIENT_ID"
 $env:MSGRAPHSECRET = "YOUR_SECRET"
 .\msgraphgolangtestingtool.exe -mailbox "user@example.com" -action sendmail -to "recipient@example.com"
@@ -187,28 +222,28 @@ $env:MSGRAPHSECRET = "YOUR_SECRET"
 
 ### Multi-File Design
 
-The application is structured into multiple files to support platform-specific authentication:
+The application is structured into multiple files under the `src/` directory to support platform-specific authentication:
 
-* `msgraphgolangtestingtool.go`: Main logic and Graph API interaction.
-* `cert_windows.go`: Native Windows CryptoAPI implementation for certificate store access.
-* `cert_stub.go`: Stub implementation for non-Windows platforms.
+* `src/msgraphgolangtestingtool.go`: Main logic and Graph API interaction.
+* `src/cert_windows.go`: Native Windows CryptoAPI implementation for certificate store access.
+* `src/cert_stub.go`: Stub implementation for non-Windows platforms.
 
 This structure allows the tool to be cross-compiled while maintaining native integration on Windows.
 
 ### Environment Variable Support
 
-The tool supports configuration via environment variables with the `MSGRAPH` prefix (no underscores for easier PowerShell usage) (msgraphgolangtestingtool.go:35-81):
+The tool supports configuration via environment variables with the `MSGRAPH` prefix (no underscores for easier PowerShell usage) (src/msgraphgolangtestingtool.go:35-81):
 
 * All command-line flags have corresponding environment variables
 * Command-line flags **take precedence** over environment variables
 * Environment variables are only used if the corresponding flag is not provided
-* Mapping: `-tenantid` → `MSGRAPHTENANT`, `-clientid` → `MSGRAPHCLIENTID`, `-mailbox` → `MSGRAPHMAILBOX`, `-proxy` → `MSGRAPHPROXY`, etc.
+* Mapping: `-tenantid` → `MSGRAPHTENANTID`, `-clientid` → `MSGRAPHCLIENTID`, `-mailbox` → `MSGRAPHMAILBOX`, `-proxy` → `MSGRAPHPROXY`, etc.
 * Useful for CI/CD pipelines, containerized environments, and reducing repetitive typing
 * All 17 configuration parameters support environment variables (see CHANGELOG for complete list)
 
 ### Proxy Support
 
-The tool supports HTTP/HTTPS proxy configuration (msgraphgolangtestingtool.go:156-162):
+The tool supports HTTP/HTTPS proxy configuration (src/msgraphgolangtestingtool.go:156-162):
 
 * Configure via `-proxy` flag or `MSGRAPHPROXY` environment variable
 * Supports standard proxy URL format: `http://proxy.example.com:8080`
@@ -218,13 +253,13 @@ The tool supports HTTP/HTTPS proxy configuration (msgraphgolangtestingtool.go:15
 
 ### Authentication Flow
 
-The application supports three mutually exclusive authentication methods (msgraphgolangtestingtool.go:107-132):
+The application supports three mutually exclusive authentication methods (src/msgraphgolangtestingtool.go:107-132):
 
 1. **Client Secret** (`-secret`): Standard App Registration secret authentication
 2. **PFX File** (`-pfx` + `-pfxpass`): Certificate-based authentication using a local .pfx file
 3. **Windows Certificate Store** (`-thumbprint`): Extracts certificate from `CurrentUser\My` store via native Windows CryptoAPI (crypt32.dll), exports it to a memory buffer as PFX, then authenticates.
 
-The Windows Certificate Store authentication (`cert_windows.go`) uses native Windows syscalls to:
+The Windows Certificate Store authentication (`src/cert_windows.go`) uses native Windows syscalls to:
 
 * Open the `CurrentUser\My` certificate store.
 * Find the certificate by its SHA1 thumbprint.
@@ -233,7 +268,7 @@ The Windows Certificate Store authentication (`cert_windows.go`) uses native Win
 
 ### Action Dispatch
 
-The main function routes to four action handlers based on the `-action` flag (msgraphgolangtestingtool.go:71-89):
+The main function routes to four action handlers based on the `-action` flag (src/msgraphgolangtestingtool.go:71-89):
 
 * `getevents`: Lists upcoming calendar events for the specified mailbox
 * `sendmail`: Sends an email with support for To/CC/BCC recipients, custom subject/body
@@ -252,19 +287,19 @@ Admin consent must be granted in Azure AD.
 
 ### Recipient Handling
 
-Email recipients (msgraphgolangtestingtool.go:75-82):
+Email recipients (src/msgraphgolangtestingtool.go:75-82):
 
 * Parses comma-separated lists for To/CC/BCC
 * Defaults to sending to self (the mailbox owner) if no recipients specified
-* Helper function `createRecipients` (msgraphgolangtestingtool.go:256-268) converts email strings to Graph API Recipient objects
+* Helper function `createRecipients` (src/msgraphgolangtestingtool.go:256-268) converts email strings to Graph API Recipient objects
 
 ### Email Content
 
-Currently supports TEXT-only email bodies (msgraphgolangtestingtool.go:245). HTML support will be added in future updates.
+Currently supports TEXT-only email bodies (src/msgraphgolangtestingtool.go:245). HTML support will be added in future updates.
 
 ### CSV Logging System
 
-The tool implements automatic CSV logging (msgraphgolangtestingtool.go:357-425):
+The tool implements automatic CSV logging (src/msgraphgolangtestingtool.go:357-425):
 
 * Creates a daily CSV file in `%TEMP%` directory with format `_msgraphgolangtestingtool_YYYY-MM-DD.csv`
 * File is opened in append mode (multiple runs on the same day append to the same file)
