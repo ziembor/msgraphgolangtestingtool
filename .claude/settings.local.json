@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod graph:*)",
+      "Bash(mkdir:*)",
+      "Bash(go build:*)",
+      "Bash(./msgraphgolangtestingtool.exe:*)"
+    ]
+  }
+}

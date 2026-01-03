@@ -82,7 +82,12 @@ All operations are automatically logged to a daily CSV file in the Windows temp 
 ### Build
 
 ```powershell
-go build -o msgraphgolangtestingtool.exe msgraphgolangtestingtool.go
+# From project root
+go build -C src -o msgraphgolangtestingtool.exe
+
+# Or from src directory
+cd src
+go build -o ../msgraphgolangtestingtool.exe
 ```
 
 See [BUILD.md](BUILD.md) for detailed build instructions.
@@ -113,6 +118,7 @@ See [BUILD.md](BUILD.md) for detailed build instructions.
 | `-bcc` | Comma-separated BCC recipients |
 | `-subject` | Email subject (default: "Automated Tool Notification") |
 | `-body` | Email body text (default: "It's a test message, please ignore") |
+| `-verbose` | Enable detailed diagnostic output |
 
 ### Environment Variables
 
@@ -120,7 +126,7 @@ All flags can be set using environment variables with the `MSGRAPH` prefix (no u
 
 | Environment Variable | Equivalent Flag |
 |---------------------|-----------------|
-| `MSGRAPHTENANT` | `-tenantid` |
+| `MSGRAPHTENANTID` | `-tenantid` |
 | `MSGRAPHCLIENTID` | `-clientid` |
 | `MSGRAPHSECRET` | `-secret` |
 | `MSGRAPHPFX` | `-pfx` |
@@ -142,7 +148,7 @@ All flags can be set using environment variables with the `MSGRAPH` prefix (no u
 
 ```powershell
 # Set environment variables
-$env:MSGRAPHTENANT = "your-tenant-id"
+$env:MSGRAPHTENANTID = "your-tenant-id"
 $env:MSGRAPHCLIENTID = "your-client-id"
 $env:MSGRAPHSECRET = "your-secret"
 $env:MSGRAPHMAILBOX = "user@example.com"
@@ -153,6 +159,32 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 .\msgraphgolangtestingtool.exe -action getinbox
 .\msgraphgolangtestingtool.exe -action sendmail -to "someone@example.com"
 ```
+
+### Verbose Mode
+
+Enable detailed diagnostic output with the `-verbose` flag:
+
+```powershell
+.\msgraphgolangtestingtool.exe -verbose -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+```
+
+**Verbose output includes:**
+- **Environment Variables Section**: Lists all MSGRAPH* environment variables currently set
+- **Final Configuration Section**: Shows resolved parameter values (after env vars + command-line flags)
+- Authentication method and details
+- JWT token information (expiration, validity period, truncated token)
+- Graph API endpoints being called
+- Request parameters and response details
+
+**Use verbose mode for:**
+- Verifying which environment variables are set and active
+- Understanding parameter precedence (env vars vs command-line flags)
+- Troubleshooting authentication issues
+- Debugging API call failures
+- Verifying configuration is correct
+- Understanding token expiration
+
+**Security note:** Verbose mode masks sensitive data (MSGRAPHSECRET and MSGRAPHPFXPASS show only first/last 4 characters, tokens are truncated).
 
 ### Proxy Support
 
@@ -167,7 +199,7 @@ $env:MSGRAPHPROXY = "http://proxy.example.com:8080"
 .\msgraphgolangtestingtool.exe -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
 
 # Combine with other environment variables
-$env:MSGRAPHTENANT = "xxx"
+$env:MSGRAPHTENANTID = "xxx"
 $env:MSGRAPHCLIENTID = "yyy"
 $env:MSGRAPHSECRET = "zzz"
 $env:MSGRAPHMAILBOX = "user@example.com"
