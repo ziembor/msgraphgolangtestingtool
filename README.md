@@ -1,2 +1,240 @@
-# msgraphgolangtestingtool
-simple codevibed tool for test MSGraph in EXO RBAC for application scope.
+# Microsoft Graph GoLang Testing Tool
+
+A portable, single-binary CLI tool for interacting with Microsoft Graph API to manage Exchange Online emails and calendar events.
+
+## Purpose
+
+This tool provides a lightweight, standalone executable for testing and managing Microsoft Graph API operations on Exchange Online mailboxes without requiring additional runtimes or dependencies. Designed for Windows environments, it supports multiple authentication methods and automatically logs all operations to CSV files.
+
+## Key Features
+
+### Authentication Methods
+
+- **Client Secret**: Standard Azure AD App Registration secret
+- **PFX Certificate**: Local certificate file with password protection
+- **Windows Certificate Store**: Direct certificate access via thumbprint (no file management required)
+
+### Operations
+
+#### 1. Get Events (`-action getevents`)
+
+Retrieves upcoming calendar events from a user's mailbox.
+
+**Example:**
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "user@example.com" -action getevents
+```
+
+#### 2. Send Mail (`-action sendmail`)
+
+Sends emails with support for multiple recipients (To/CC/BCC) and custom subject/body.
+
+**Example:**
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "sender@example.com" -action sendmail -to "recipient@example.com" -subject "Test Email" -body "This is a test"
+```
+
+**Features:**
+
+- Defaults to sending to self if no recipients specified
+- Supports multiple To, CC, and BCC recipients (comma-separated)
+- Text-based email bodies (HTML support coming soon)
+
+#### 3. Send Invite (`-action sendinvite`)
+
+Creates and sends calendar meeting invitations.
+
+**Example:**
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "user@example.com" -action sendinvite
+```
+
+#### 4. Get Inbox (`-action getinbox`)
+
+Lists the newest 10 messages from a user's inbox with sender, recipients, subject, and received date.
+
+**Example:**
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "user@example.com" -action getinbox
+```
+
+### CSV Logging
+
+All operations are automatically logged to a daily CSV file in the Windows temp directory:
+- **Location**: `%TEMP%\_msgraphgolangtestingtool_YYYY-MM-DD.csv`
+- **Content**: Timestamps, action details, results, and status
+- **Mode**: Append (multiple runs on the same day add to the same file)
+
+## Quick Start
+
+### Prerequisites
+
+1. **Go 1.25+** (for building from source)
+2. **Azure AD App Registration** with required permissions:
+   - `Mail.Send`
+   - `Mail.Read`
+   - `Calendars.ReadWrite`
+3. **Admin Consent** granted for the application
+
+### Build
+
+```powershell
+go build -o msgraphgolangtestingtool.exe msgraphgolangtestingtool.go
+```
+
+See [BUILD.md](BUILD.md) for detailed build instructions.
+
+### Usage
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+```
+
+### Required Flags
+
+| Flag | Description |
+|------|-------------|
+| `-tenantid` | Azure Tenant ID |
+| `-clientid` | Application (Client) ID |
+| `-mailbox` | Target user email address |
+| **One of:** | |
+| `-secret` | Client Secret |
+| `-pfx` + `-pfxpass` | Path to PFX file and password |
+| `-thumbprint` | Certificate thumbprint from Windows store |
+
+### Optional Flags (for sendmail)
+
+| Flag | Description |
+|------|-------------|
+| `-to` | Comma-separated To recipients |
+| `-cc` | Comma-separated CC recipients |
+| `-bcc` | Comma-separated BCC recipients |
+| `-subject` | Email subject (default: "Automated Tool Notification") |
+| `-body` | Email body text (default: "It's a test message, please ignore") |
+
+### Environment Variables
+
+All flags can be set using environment variables with the `MSGRAPH` prefix (no underscores for easier PowerShell usage). Command-line flags take precedence over environment variables.
+
+| Environment Variable | Equivalent Flag |
+|---------------------|-----------------|
+| `MSGRAPHTENANT` | `-tenantid` |
+| `MSGRAPHCLIENTID` | `-clientid` |
+| `MSGRAPHSECRET` | `-secret` |
+| `MSGRAPHPFX` | `-pfx` |
+| `MSGRAPHPFXPASS` | `-pfxpass` |
+| `MSGRAPHTHUMBPRINT` | `-thumbprint` |
+| `MSGRAPHMAILBOX` | `-mailbox` |
+| `MSGRAPHTO` | `-to` |
+| `MSGRAPHCC` | `-cc` |
+| `MSGRAPHBCC` | `-bcc` |
+| `MSGRAPHSUBJECT` | `-subject` |
+| `MSGRAPHBODY` | `-body` |
+| `MSGRAPHINVITESUBJECT` | `-invite-subject` |
+| `MSGRAPHSTART` | `-start` |
+| `MSGRAPHEND` | `-end` |
+| `MSGRAPHACTION` | `-action` |
+| `MSGRAPHPROXY` | `-proxy` |
+
+**Example:**
+
+```powershell
+# Set environment variables
+$env:MSGRAPHTENANT = "your-tenant-id"
+$env:MSGRAPHCLIENTID = "your-client-id"
+$env:MSGRAPHSECRET = "your-secret"
+$env:MSGRAPHMAILBOX = "user@example.com"
+
+# Run without repeating credentials
+
+.\msgraphgolangtestingtool.exe -action getevents
+.\msgraphgolangtestingtool.exe -action getinbox
+.\msgraphgolangtestingtool.exe -action sendmail -to "someone@example.com"
+```
+
+### Proxy Support
+
+Use the `-proxy` flag or `MSGRAPHPROXY` environment variable to route traffic through an HTTP/HTTPS proxy:
+
+```powershell
+# Using command-line flag
+.\msgraphgolangtestingtool.exe -proxy "http://proxy.example.com:8080" -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+
+# Using environment variable
+$env:MSGRAPHPROXY = "http://proxy.example.com:8080"
+.\msgraphgolangtestingtool.exe -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+
+# Combine with other environment variables
+$env:MSGRAPHTENANT = "xxx"
+$env:MSGRAPHCLIENTID = "yyy"
+$env:MSGRAPHSECRET = "zzz"
+$env:MSGRAPHMAILBOX = "user@example.com"
+$env:MSGRAPHPROXY = "http://proxy.example.com:8080"
+.\msgraphgolangtestingtool.exe -action getevents
+```
+
+## Authentication Examples
+
+### Using Client Secret
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -secret "xxx" -mailbox "user@example.com" -action getevents
+```
+
+### Using PFX Certificate
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -pfx ".\cert.pfx" -pfxpass "password" -mailbox "user@example.com" -action sendmail -to "recipient@example.com"
+```
+
+### Using Windows Certificate Store
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -thumbprint "CD817B3329802E692CF30D8DDF896FE811B048AB" -mailbox "user@example.com" -action getinbox
+```
+
+## Certificate Setup
+
+For testing purposes, use the included PowerShell script to generate a self-signed certificate:
+
+```powershell
+.\selfsignedcert.ps1
+```
+
+This creates:
+
+- A 2048-bit RSA certificate with SHA256 hash
+- PFX file (private key) for authentication
+- CER file (public key) to upload to Azure AD App Registration
+
+**For production**: Use CA-signed certificates instead of self-signed certificates.
+
+## Platform Requirements
+
+**Cross-Platform** - The tool can be built for Windows, Linux, and macOS. However, the `-thumbprint` authentication method is **Windows-specific** as it utilizes the native Windows Certificate Store (via CryptoAPI).
+
+## Documentation
+
+- **[BUILD.md](BUILD.md)**: Detailed build instructions
+- **[CLAUDE.md](CLAUDE.md)**: Architecture and code structure for AI assistants
+- **[GEMINI.md](GEMINI.md)**: Comprehensive usage guide
+
+## Output
+
+All operations display results on screen and simultaneously log to:
+
+```powershell
+C:\Users\<Username>\AppData\Local\Temp\_msgraphgolangtestingtool_YYYY-MM-DD.csv
+```
+
+The CSV file path is displayed at the start of each operation.
+
+## License
+
+This tool is provided as-is for testing and automation purposes.
+
+## Support
+
+For issues, questions, or feature requests, please refer to the documentation files or contact your system administrator.
