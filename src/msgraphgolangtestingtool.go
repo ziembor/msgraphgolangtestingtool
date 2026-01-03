@@ -5,11 +5,13 @@ import (
 	"crypto"
 	"crypto/x509"
 	_ "embed"
+	"encoding/base64"
 	"encoding/csv"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"mime"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -70,6 +72,8 @@ func applyEnvVars(envMap map[string]*string) {
 		"bcc":            "MSGRAPHBCC",
 		"subject":        "MSGRAPHSUBJECT",
 		"body":           "MSGRAPHBODY",
+		"bodyHTML":       "MSGRAPHBODYHTML",
+		"attachments":    "MSGRAPHATTACHMENTS",
 		"invite-subject": "MSGRAPHINVITESUBJECT",
 		"start":          "MSGRAPHSTART",
 		"end":            "MSGRAPHEND",
@@ -125,6 +129,8 @@ func run() error {
 	// Email content flags
 	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email")
 	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text)")
+	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided)")
+	attachments := flag.String("attachments", "", "Comma-separated list of file paths to attach")
 
 	// Calendar invite flags
 	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite")
@@ -166,6 +172,8 @@ func run() error {
 		"MSGRAPHBCC":           bccRaw,
 		"MSGRAPHSUBJECT":       subject,
 		"MSGRAPHBODY":          body,
+		"MSGRAPHBODYHTML":      bodyHTML,
+		"MSGRAPHATTACHMENTS":   attachments,
 		"MSGRAPHINVITESUBJECT": inviteSubject,
 		"MSGRAPHSTART":         startTime,
 		"MSGRAPHEND":           endTime,
@@ -190,7 +198,7 @@ func run() error {
 
 	// Print verbose configuration if enabled
 	if verboseMode {
-		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, *toRaw, *ccRaw, *bccRaw, *subject, *body, *inviteSubject, *startTime, *endTime)
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, *toRaw, *ccRaw, *bccRaw, *subject, *body, *bodyHTML, *attachments, *inviteSubject, *startTime, *endTime)
 	}
 
 	// Validation
@@ -254,13 +262,14 @@ func run() error {
 		to := parseList(*toRaw)
 		cc := parseList(*ccRaw)
 		bcc := parseList(*bccRaw)
+		attachmentFiles := parseList(*attachments)
 
 		// If no recipients specified at all, default 'to' to the sender mailbox
 		if len(to) == 0 && len(cc) == 0 && len(bcc) == 0 {
 			to = []string{*mailbox}
 		}
 
-		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body)
+		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body, *bodyHTML, attachmentFiles)
 	case ActionSendInvite:
 		createInvite(ctx, client, *mailbox, *inviteSubject, *startTime, *endTime)
 	case ActionGetInbox:
@@ -412,19 +421,25 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	return nil
 }
 
-func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, senderMailbox string, to, cc, bcc []string, subject, content string) {
+func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, senderMailbox string, to, cc, bcc []string, subject, textContent, htmlContent string, attachmentPaths []string) {
 	message := models.NewMessage()
 
 	// Set Subject
 	message.SetSubject(&subject)
 
+	// Set body - prefer HTML if provided, otherwise use text
 	body := models.NewItemBody()
-	body.SetContent(&content)
-
-	// Set body type to Text
-	contentType := models.TEXT_BODYTYPE
-	body.SetContentType(&contentType)
-
+	if htmlContent != "" {
+		body.SetContent(&htmlContent)
+		contentType := models.HTML_BODYTYPE
+		body.SetContentType(&contentType)
+		logVerbose("Email body type: HTML")
+	} else {
+		body.SetContent(&textContent)
+		contentType := models.TEXT_BODYTYPE
+		body.SetContentType(&contentType)
+		logVerbose("Email body type: Text")
+	}
 	message.SetBody(body)
 
 	// Add Recipients
@@ -438,6 +453,17 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 		message.SetBccRecipients(createRecipients(bcc))
 	}
 
+	// Add Attachments
+	if len(attachmentPaths) > 0 {
+		fileAttachments, err := createFileAttachments(attachmentPaths)
+		if err != nil {
+			log.Printf("Error creating attachments: %v", err)
+		} else if len(fileAttachments) > 0 {
+			message.SetAttachments(fileAttachments)
+			logVerbose("Attachments added: %d file(s)", len(fileAttachments))
+		}
+	}
+
 	requestBody := users.NewItemSendMailPostRequestBody()
 	requestBody.SetMessage(message)
 
@@ -446,19 +472,85 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
 
 	status := StatusSuccess
+	attachmentCount := len(attachmentPaths)
 	if err != nil {
 		log.Printf("Error sending mail: %v", err)
 		status = fmt.Sprintf("%s: %v", StatusError, err)
 	} else {
 		logVerbose("Email sent successfully via Graph API")
-		fmt.Printf("Email sent successfully from %s.\nTo: %v\nCc: %v\nBcc: %v\nSubject: %s\n", senderMailbox, to, cc, bcc, subject)
+		fmt.Printf("Email sent successfully from %s.\n", senderMailbox)
+		fmt.Printf("To: %v\n", to)
+		fmt.Printf("Cc: %v\n", cc)
+		fmt.Printf("Bcc: %v\n", bcc)
+		fmt.Printf("Subject: %s\n", subject)
+		if htmlContent != "" {
+			fmt.Println("Body Type: HTML")
+		} else {
+			fmt.Println("Body Type: Text")
+		}
+		if attachmentCount > 0 {
+			fmt.Printf("Attachments: %d file(s)\n", attachmentCount)
+		}
 	}
 
 	// Write to CSV
 	toStr := strings.Join(to, "; ")
 	ccStr := strings.Join(cc, "; ")
 	bccStr := strings.Join(bcc, "; ")
-	writeCSVRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject})
+	bodyType := "Text"
+	if htmlContent != "" {
+		bodyType = "HTML"
+	}
+	writeCSVRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject, bodyType, fmt.Sprintf("%d", attachmentCount)})
+}
+
+// createFileAttachments reads files and creates Graph API attachment objects
+func createFileAttachments(filePaths []string) ([]models.Attachmentable, error) {
+	var attachments []models.Attachmentable
+
+	for _, filePath := range filePaths {
+		// Read file content
+		fileData, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Printf("Warning: Could not read attachment file %s: %v", filePath, err)
+			continue
+		}
+
+		// Create file attachment
+		attachment := models.NewFileAttachment()
+
+		// Set the OData type for file attachment
+		odataType := "#microsoft.graph.fileAttachment"
+		attachment.SetOdataType(&odataType)
+
+		// Set file name (just the base name, not full path)
+		fileName := filepath.Base(filePath)
+		attachment.SetName(&fileName)
+
+		// Detect content type from file extension
+		contentType := mime.TypeByExtension(filepath.Ext(filePath))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		attachment.SetContentType(&contentType)
+
+		// Set content as base64 encoded bytes
+		attachment.SetContentBytes(fileData)
+
+		logVerbose("Attachment: %s (%s, %d bytes)", fileName, contentType, len(fileData))
+		attachments = append(attachments, attachment)
+	}
+
+	if len(attachments) == 0 && len(filePaths) > 0 {
+		return nil, fmt.Errorf("no valid attachments could be processed")
+	}
+
+	return attachments, nil
+}
+
+// getAttachmentContentBase64 returns base64 encoded file content (for debugging/verbose)
+func getAttachmentContentBase64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func createRecipients(emails []string) []models.Recipientable {
@@ -664,7 +756,7 @@ func writeCSVHeader(action string) {
 	case ActionGetEvents:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Event Subject", "Event ID"}
 	case ActionSendMail:
-		header = []string{"Timestamp", "Action", "Status", "Mailbox", "To", "CC", "BCC", "Subject"}
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "To", "CC", "BCC", "Subject", "Body Type", "Attachments"}
 	case ActionSendInvite:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "Start Time", "End Time", "Event ID"}
 	case ActionGetInbox:
@@ -706,7 +798,7 @@ func logVerbose(format string, args ...interface{}) {
 }
 
 // Print verbose configuration summary
-func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, inviteSubject, startTime, endTime string) {
+func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime string) {
 	fmt.Println("========================================")
 	fmt.Println("VERBOSE MODE ENABLED")
 	fmt.Println("========================================")
@@ -772,7 +864,9 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 		fmt.Printf("  CC: %s\n", ifEmpty(cc, "(none)"))
 		fmt.Printf("  BCC: %s\n", ifEmpty(bcc, "(none)"))
 		fmt.Printf("  Subject: %s\n", subject)
-		fmt.Printf("  Body: %s\n", truncate(body, 60))
+		fmt.Printf("  Body (Text): %s\n", truncate(body, 60))
+		fmt.Printf("  Body (HTML): %s\n", ifEmpty(truncate(bodyHTML, 60), "(none)"))
+		fmt.Printf("  Attachments: %s\n", ifEmpty(attachments, "(none)"))
 	case "sendinvite":
 		fmt.Printf("  Invite Subject: %s\n", inviteSubject)
 		fmt.Printf("  Start Time: %s\n", ifEmpty(startTime, "(now)"))
@@ -853,11 +947,14 @@ func getEnvVariables() map[string]string {
 		"MSGRAPHBCC",
 		"MSGRAPHSUBJECT",
 		"MSGRAPHBODY",
+		"MSGRAPHBODYHTML",
+		"MSGRAPHATTACHMENTS",
 		"MSGRAPHINVITESUBJECT",
 		"MSGRAPHSTART",
 		"MSGRAPHEND",
 		"MSGRAPHACTION",
 		"MSGRAPHPROXY",
+		"MSGRAPHCOUNT",
 	}
 
 	for _, envVar := range msgraphEnvVars {
