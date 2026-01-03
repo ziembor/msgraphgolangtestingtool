@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	_ "embed"
 	"encoding/csv"
 	"errors"
 	"flag"
@@ -25,7 +26,9 @@ import (
 	"golang.org/x/crypto/pkcs12"
 )
 
-const version = "1.14.0"
+//go:embed VERSION
+var versionRaw string
+var version = strings.TrimSpace(versionRaw)
 
 // Action constants
 const (
