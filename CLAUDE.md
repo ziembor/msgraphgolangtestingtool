@@ -71,6 +71,8 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 | `-invite-subject` | Subject of the calendar invite. | No (default: "System Sync") |
 | `-start` | Start time (RFC3339, e.g., 2026-01-15T14:00:00Z). | No (default: Now) |
 | `-end` | End time (RFC3339). | No (default: 1h after start) |
+| **Query Options** | (Used with `-action getevents` or `-action getinbox`) | |
+| `-count` | Number of items to retrieve. | No (default: 3) |
 | **Network** | | |
 | `-proxy` | HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080). | No |
 | **Other** | | |
@@ -102,7 +104,7 @@ This is useful for:
 ### Environment Variables
 
 All flags can be set via environment variables (Command Line flags take precedence).
-Prefix: `MSGRAPH` (e.g., `MSGRAPHTENANTID`, `MSGRAPHCLIENTID`, `MSGRAPHPROXY`).
+Prefix: `MSGRAPH` (e.g., `MSGRAPHTENANTID`, `MSGRAPHCLIENTID`, `MSGRAPHPROXY`, `MSGRAPHCOUNT`).
 
 ### Examples
 
@@ -142,17 +144,46 @@ No need to manage PFX files. The tool extracts the public/private key pair direc
                  -to "boss@example.com" -cc "team@example.com"
 ```
 
-#### 4. List Newest 10 Inbox Messages
+#### 4. List Newest Inbox Messages (with custom count)
 
 ```powershell
+# List newest 3 messages (default)
 .\msgraphgolangtestingtool.exe -tenantid "1111-2222-3333" `
                  -clientid "aaaa-bbbb-cccc" `
                  -secret "MySecretValue" `
                  -mailbox "user@example.com" `
                  -action getinbox
+
+# List newest 10 messages (custom count)
+.\msgraphgolangtestingtool.exe -tenantid "1111-2222-3333" `
+                 -clientid "aaaa-bbbb-cccc" `
+                 -secret "MySecretValue" `
+                 -mailbox "user@example.com" `
+                 -action getinbox `
+                 -count 10
 ```
 
-#### 5. Use Proxy (Flag or Env Var)
+#### 5. List Calendar Events (with custom count)
+
+```powershell
+# List 5 upcoming events
+.\msgraphgolangtestingtool.exe -tenantid "1111-2222-3333" `
+                 -clientid "aaaa-bbbb-cccc" `
+                 -secret "MySecretValue" `
+                 -mailbox "user@example.com" `
+                 -action getevents `
+                 -count 5
+
+# Using environment variable for count
+$env:MSGRAPHCOUNT = "10"
+.\msgraphgolangtestingtool.exe -tenantid "1111-2222-3333" `
+                 -clientid "aaaa-bbbb-cccc" `
+                 -secret "MySecretValue" `
+                 -mailbox "user@example.com" `
+                 -action getevents
+```
+
+#### 6. Use Proxy (Flag or Env Var)
 
 ```powershell
 # Using flag
@@ -237,9 +268,9 @@ The tool supports configuration via environment variables with the `MSGRAPH` pre
 * All command-line flags have corresponding environment variables
 * Command-line flags **take precedence** over environment variables
 * Environment variables are only used if the corresponding flag is not provided
-* Mapping: `-tenantid` → `MSGRAPHTENANTID`, `-clientid` → `MSGRAPHCLIENTID`, `-mailbox` → `MSGRAPHMAILBOX`, `-proxy` → `MSGRAPHPROXY`, etc.
+* Mapping: `-tenantid` → `MSGRAPHTENANTID`, `-clientid` → `MSGRAPHCLIENTID`, `-mailbox` → `MSGRAPHMAILBOX`, `-proxy` → `MSGRAPHPROXY`, `-count` → `MSGRAPHCOUNT`, etc.
 * Useful for CI/CD pipelines, containerized environments, and reducing repetitive typing
-* All 17 configuration parameters support environment variables (see CHANGELOG for complete list)
+* All 18 configuration parameters support environment variables (see CHANGELOG for complete list)
 
 ### Proxy Support
 
@@ -339,5 +370,111 @@ All executions require:
 * `-mailbox`: Target user email address
 
 Plus one authentication method (`-secret`, `-pfx`, or `-thumbprint`).
+
+## Release Process
+
+When you're ready to submit changes to the main branch and create a new release:
+
+### Step 1: Verify All Version Files Match
+```powershell
+# Check that all version references are consistent
+cat VERSION
+grep "const version" src/msgraphgolangtestingtool.go
+head -20 CHANGELOG.md
+```
+
+### Step 2: Check Current Status
+```powershell
+git status
+```
+
+### Step 3: Stage All Changes
+```powershell
+git add .
+```
+
+### Step 4: Commit Changes
+```powershell
+git commit -m "$(cat <<'EOF'
+Release vX.X.X - Brief description
+
+### Fixed
+- Critical/important fixes
+
+### Security
+- Security improvements
+
+### Changed
+- Feature changes and improvements
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+### Step 5: Push Current Branch to Remote
+```powershell
+git push origin <current-branch-name>
+```
+
+### Step 6: Merge to Main
+
+**Option A: Direct merge (if you have permissions)**
+```powershell
+git checkout main
+git merge <current-branch-name>
+git push origin main
+```
+
+**Option B: Create Pull Request**
+```powershell
+gh pr create --title "Release vX.X.X" --body "$(cat <<'EOF'
+## Summary
+Brief description of changes
+
+## Changes
+- Critical fixes
+- Security improvements
+- Feature changes
+
+## Test plan
+- [x] Code builds successfully
+- [x] All tests pass
+- [x] Documentation updated
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+### Step 7: Create and Push Git Tag (This triggers GitHub Actions!)
+```powershell
+# Create tag matching the VERSION file
+git tag v1.X.Y
+git push origin v1.X.Y
+```
+
+**IMPORTANT:** Pushing the tag triggers `.github/workflows/build.yml` which will:
+- Build the Windows executable
+- Create a GitHub Release
+- Attach the compiled binary to the release
+- Generate release notes automatically
+
+### Step 8: Verify GitHub Actions Workflow
+```powershell
+# List recent workflow runs
+gh run list --limit 5
+
+# Watch the current run
+gh run watch
+```
+
+### Key Points
+- **Tag triggers build**: The GitHub Actions workflow is triggered by pushing a tag matching `v*` pattern
+- **Version consistency**: VERSION file, source code constant (const version), CHANGELOG.md, and git tag must all match
+- **Workflow permissions**: The workflow has `contents: write` permission to create releases
+- **Automatic release**: The build artifact will be automatically attached to the GitHub release
 
 ..ooOO End OOoo..

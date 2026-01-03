@@ -43,6 +43,16 @@ type CryptoApiBlob struct {
 }
 
 func exportCertFromStore(thumbprintStr string) ([]byte, string, error) {
+	// Validate thumbprint format (SHA1 hash = 40 hex characters = 20 bytes)
+	if len(thumbprintStr) != 40 {
+		return nil, "", fmt.Errorf("thumbprint must be exactly 40 characters (SHA1 hash), got %d", len(thumbprintStr))
+	}
+
+	// Validate that thumbprint contains only hexadecimal characters
+	if !isHexString(thumbprintStr) {
+		return nil, "", fmt.Errorf("thumbprint must contain only hexadecimal characters (0-9, a-f, A-F)")
+	}
+
 	// 1. Decode thumbprint hex to bytes for the search blob
 	thumbprintBytes, err := hex.DecodeString(thumbprintStr)
 	if err != nil {
@@ -152,4 +162,14 @@ func generateRandomPassword() (string, error) {
 		return "", fmt.Errorf("failed to generate random password: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// isHexString validates that a string contains only hexadecimal characters (0-9, a-f, A-F)
+func isHexString(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

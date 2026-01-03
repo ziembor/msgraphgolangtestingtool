@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,21 @@ import (
 	"golang.org/x/crypto/pkcs12"
 )
 
-const version = "1.12.5"
+const version = "1.14.0"
+
+// Action constants
+const (
+	ActionGetEvents  = "getevents"
+	ActionSendMail   = "sendmail"
+	ActionSendInvite = "sendinvite"
+	ActionGetInbox   = "getinbox"
+)
+
+// Status constants
+const (
+	StatusSuccess = "Success"
+	StatusError   = "Error"
+)
 
 var csvWriter *csv.Writer
 var csvFile *os.File
@@ -80,6 +95,13 @@ func applyEnvVars(envMap map[string]*string) {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// 1. Define Command Line Parameters
 
 	showVersion := flag.Bool("version", false, "Show version information")
@@ -112,6 +134,9 @@ func main() {
 	// Verbose mode
 	verbose := flag.Bool("verbose", false, "Enable verbose output (shows configuration, tokens, API details)")
 
+	// Count for getevents and getinbox
+	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3)")
+
 	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
 	flag.Parse()
 
@@ -121,7 +146,7 @@ func main() {
 	// Check version flag
 	if *showVersion {
 		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
-		os.Exit(0)
+		return nil
 	}
 
 	// Apply environment variables if flags not set via command line
@@ -144,6 +169,21 @@ func main() {
 		"MSGRAPHACTION":        action,
 		"MSGRAPHPROXY":         proxyURL,
 	})
+
+	// Apply MSGRAPHCOUNT environment variable if flag wasn't provided
+	countFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "count" {
+			countFlagProvided = true
+		}
+	})
+	if !countFlagProvided {
+		if envCount := os.Getenv("MSGRAPHCOUNT"); envCount != "" {
+			if parsedCount, err := strconv.Atoi(envCount); err == nil && parsedCount > 0 {
+				*count = parsedCount
+			}
+		}
+	}
 
 	// Print verbose configuration if enabled
 	if verboseMode {
@@ -172,7 +212,7 @@ func main() {
 	// 2. Setup Authentication
 	cred, err := getCredential(*tenantID, *clientID, *secret, *pfxPath, *pfxPass, *thumbprint)
 	if err != nil {
-		log.Fatalf("Authentication setup failed: %v", err)
+		return fmt.Errorf("authentication setup failed: %w", err)
 	}
 
 	// Get and display token information if verbose
@@ -191,7 +231,7 @@ func main() {
 	// Scopes for Application Permissions usually are https://graph.microsoft.com/.default
 	client, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{"https://graph.microsoft.com/.default"})
 	if err != nil {
-		log.Fatalf("Graph client initialization failed: %v", err)
+		return fmt.Errorf("graph client initialization failed: %w", err)
 	}
 
 	if verboseMode {
@@ -203,9 +243,11 @@ func main() {
 
 	// 3. Execute Actions based on flags
 	switch *action {
-	case "getevents":
-		listEvents(ctx, client, *mailbox)
-	case "sendmail":
+	case ActionGetEvents:
+		if err := listEvents(ctx, client, *mailbox, *count); err != nil {
+			return fmt.Errorf("failed to list events: %w", err)
+		}
+	case ActionSendMail:
 		to := parseList(*toRaw)
 		cc := parseList(*ccRaw)
 		bcc := parseList(*bccRaw)
@@ -216,13 +258,17 @@ func main() {
 		}
 
 		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body)
-	case "sendinvite":
+	case ActionSendInvite:
 		createInvite(ctx, client, *mailbox, *inviteSubject, *startTime, *endTime)
-	case "getinbox":
-		listInbox(ctx, client, *mailbox)
+	case ActionGetInbox:
+		if err := listInbox(ctx, client, *mailbox, *count); err != nil {
+			return fmt.Errorf("failed to list inbox: %w", err)
+		}
 	default:
-		fmt.Printf("Unknown action: %s\n", *action)
+		return fmt.Errorf("unknown action: %s", *action)
 	}
+
+	return nil
 }
 
 func parseList(s string) []string {
@@ -306,9 +352,16 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 
 // ... Rest of the functions (listEvents, sendEmail, createInvite) ...
 
-func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string) {
-	logVerbose("Calling Graph API: GET /users/%s/events", mailbox)
-	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, nil)
+func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int) error {
+	// Configure request to get top N events
+	requestConfig := &users.ItemEventsRequestBuilderGetRequestConfiguration{
+		QueryParameters: &users.ItemEventsRequestBuilderGetQueryParameters{
+			Top: Int32Ptr(int32(count)),
+		},
+	}
+
+	logVerbose("Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
+	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
 	if err != nil {
 		var oDataError *odataerrors.ODataError
 		if errors.As(err, &oDataError) {
@@ -318,7 +371,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 				log.Printf("  Message: %s", *oDataError.GetErrorEscaped().GetMessage())
 			}
 		}
-		log.Fatalf("Error fetching calendar for %s: %+v", mailbox, err)
+		return fmt.Errorf("error fetching calendar for %s: %w", mailbox, err)
 	}
 
 	events := result.GetValue()
@@ -330,7 +383,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	if eventCount == 0 {
 		fmt.Println("No events found.")
 		// Log summary entry when no events found
-		writeCSVRow([]string{"getevents", "Success", mailbox, fmt.Sprintf("No events found (0 events)"), "N/A"})
+		writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("No events found (0 events)"), "N/A"})
 	} else {
 		for _, event := range events {
 			subject := "N/A"
@@ -346,12 +399,14 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 			fmt.Printf("- %s (ID: %s)\n", subject, id)
 
 			// Write to CSV
-			writeCSVRow([]string{"getevents", "Success", mailbox, subject, id})
+			writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
 		}
 		// Log summary entry after all events
 		fmt.Printf("\nTotal events retrieved: %d\n", eventCount)
-		writeCSVRow([]string{"getevents", "Success", mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
+		writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
 	}
+
+	return nil
 }
 
 func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, senderMailbox string, to, cc, bcc []string, subject, content string) {
@@ -387,10 +442,10 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	logVerbose("Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
 	err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
 
-	status := "Success"
+	status := StatusSuccess
 	if err != nil {
 		log.Printf("Error sending mail: %v", err)
-		status = fmt.Sprintf("Error: %v", err)
+		status = fmt.Sprintf("%s: %v", StatusError, err)
 	} else {
 		logVerbose("Email sent successfully via Graph API")
 		fmt.Printf("Email sent successfully from %s.\nTo: %v\nCc: %v\nBcc: %v\nSubject: %s\n", senderMailbox, to, cc, bcc, subject)
@@ -400,7 +455,7 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	toStr := strings.Join(to, "; ")
 	ccStr := strings.Join(cc, "; ")
 	bccStr := strings.Join(bcc, "; ")
-	writeCSVRow([]string{"sendmail", status, senderMailbox, toStr, ccStr, bccStr, subject})
+	writeCSVRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject})
 }
 
 func createRecipients(emails []string) []models.Recipientable {
@@ -466,11 +521,11 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	logVerbose("Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	createdEvent, err := client.Users().ByUserId(mailbox).Events().Post(ctx, event, nil)
 
-	status := "Success"
+	status := StatusSuccess
 	eventID := "N/A"
 	if err != nil {
 		log.Printf("Error creating invite: %v", err)
-		status = fmt.Sprintf("Error: %v", err)
+		status = fmt.Sprintf("%s: %v", StatusError, err)
 	} else {
 		if createdEvent.GetId() != nil {
 			eventID = *createdEvent.GetId()
@@ -485,35 +540,35 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	}
 
 	// Write to CSV
-	writeCSVRow([]string{"sendinvite", status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
+	writeCSVRow([]string{ActionSendInvite, status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
 }
 
-func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string) {
-	// Configure request to get top 10 messages ordered by received date
+func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int) error {
+	// Configure request to get top N messages ordered by received date
 	requestConfig := &users.ItemMessagesRequestBuilderGetRequestConfiguration{
 		QueryParameters: &users.ItemMessagesRequestBuilderGetQueryParameters{
-			Top:     Int32Ptr(10),
+			Top:     Int32Ptr(int32(count)),
 			Orderby: []string{"receivedDateTime DESC"},
 			Select:  []string{"subject", "receivedDateTime", "from", "toRecipients"},
 		},
 	}
 
-	logVerbose("Calling Graph API: GET /users/%s/messages?$top=10&$orderby=receivedDateTime DESC", mailbox)
+	logVerbose("Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
 	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
 	if err != nil {
-		log.Fatalf("Error fetching inbox for %s: %v", mailbox, err)
+		return fmt.Errorf("error fetching inbox for %s: %w", mailbox, err)
 	}
 
 	messages := result.GetValue()
 	messageCount := len(messages)
 
 	logVerbose("API response received: %d messages", messageCount)
-	fmt.Printf("Newest 10 messages in inbox for %s:\n\n", mailbox)
+	fmt.Printf("Newest %d messages in inbox for %s:\n\n", count, mailbox)
 
 	if messageCount == 0 {
 		fmt.Println("No messages found.")
 		// Log summary entry when no messages found
-		writeCSVRow([]string{"getinbox", "Success", mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
+		writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
 	} else {
 		for i, message := range messages {
 			// Extract sender
@@ -554,12 +609,14 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 			fmt.Printf("   Received: %s\n\n", receivedDate)
 
 			// Write to CSV
-			writeCSVRow([]string{"getinbox", "Success", mailbox, subject, sender, recipientStr, receivedDate})
+			writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
 		}
 		// Log summary entry after all messages
 		fmt.Printf("Total messages retrieved: %d\n", messageCount)
-		writeCSVRow([]string{"getinbox", "Success", mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
+		writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
 	}
+
+	return nil
 }
 
 // Helper function to create int32 pointer
@@ -601,13 +658,13 @@ func initCSVLog(action string) {
 func writeCSVHeader(action string) {
 	var header []string
 	switch action {
-	case "getevents":
+	case ActionGetEvents:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Event Subject", "Event ID"}
-	case "sendmail":
+	case ActionSendMail:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "To", "CC", "BCC", "Subject"}
-	case "sendinvite":
+	case ActionSendInvite:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "Start Time", "End Time", "Event ID"}
-	case "getinbox":
+	case ActionGetInbox:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "From", "To", "Received DateTime"}
 	default:
 		header = []string{"Timestamp", "Action", "Status", "Details"}

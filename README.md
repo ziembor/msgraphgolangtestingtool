@@ -118,7 +118,19 @@ See [BUILD.md](BUILD.md) for detailed build instructions.
 | `-bcc` | Comma-separated BCC recipients |
 | `-subject` | Email subject (default: "Automated Tool Notification") |
 | `-body` | Email body text (default: "It's a test message, please ignore") |
+
+### Optional Flags (for getevents and getinbox)
+
+| Flag | Description |
+|------|-------------|
+| `-count` | Number of items to retrieve (default: 3) |
+
+### Other Optional Flags
+
+| Flag | Description |
+|------|-------------|
 | `-verbose` | Enable detailed diagnostic output |
+| `-proxy` | HTTP/HTTPS proxy URL |
 
 ### Environment Variables
 
@@ -143,6 +155,7 @@ All flags can be set using environment variables with the `MSGRAPH` prefix (no u
 | `MSGRAPHEND` | `-end` |
 | `MSGRAPHACTION` | `-action` |
 | `MSGRAPHPROXY` | `-proxy` |
+| `MSGRAPHCOUNT` | `-count` |
 
 **Example:**
 

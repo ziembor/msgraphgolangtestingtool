@@ -1,11 +1,11 @@
 # Version Management Guide
 
 ## Current Version
-**1.12.4** (stored in `/VERSION` file)
+**1.12.6** (stored in `/VERSION` file)
 
 ## Version Update Procedure
 
-When updating the version, you MUST update all three locations:
+When updating the version, you MUST update all four locations:
 
 ### 1. VERSION File
 ```bash
@@ -18,15 +18,34 @@ File: `src/msgraphgolangtestingtool.go`
 const version = "1.x.y"
 ```
 
-### 3. Verification
+### 3. CHANGELOG.md
+Add a new entry at the top with the version, date, and changes:
+```markdown
+## [1.x.y] - YYYY-MM-DD
+
+### Added
+- New features
+
+### Changed
+- Changes to existing functionality
+
+### Fixed
+- Bug fixes
+
+### Security
+- Security improvements
+```
+
+### 4. Verification
 ```bash
 # Rebuild
 cd src && go build -o ../msgraphgolangtestingtool.exe
 
-# Verify all three match
+# Verify all locations are updated
 cat VERSION
 grep "const version" src/msgraphgolangtestingtool.go
 ./msgraphgolangtestingtool.exe -version
+head -10 CHANGELOG.md  # Check first entry is the new version
 ```
 
 ## Versioning Policy
@@ -38,26 +57,31 @@ grep "const version" src/msgraphgolangtestingtool.go
 
 ## Release Process
 
-1. Update version in VERSION file and source code
-2. Update documentation if needed
-3. Rebuild the application
-4. Commit changes with message: "Bump version to 1.x.y"
-5. Create git tag: `git tag v1.x.y`
-6. Push tag: `git push origin v1.x.y`
-7. GitHub Actions will automatically build and create release
+1. Update version in VERSION file, source code, and CHANGELOG.md
+2. Document all changes in CHANGELOG.md following Keep a Changelog format
+3. Update documentation if needed
+4. Rebuild the application
+5. Verify all four locations match
+6. Commit changes with message: "Bump version to 1.x.y"
+7. Create git tag: `git tag v1.x.y`
+8. Push tag: `git push origin v1.x.y`
+9. GitHub Actions will automatically build and create release
 
 ## Version History Quick Reference
 
+- **1.12.6** - Current version
+- **1.12.5** - (intermediate version)
 - **1.12.4** - Added verbose mode with env var display, renamed MSGRAPHTENANT to MSGRAPHTENANTID
 - **1.12.0** - Base version (before tracking in VERSION file)
 
 ## For Future AI Assistants
 
-⚠️ **CRITICAL**: Always check and update the VERSION file when making version changes!
+⚠️ **CRITICAL**: Always check and update ALL version-related files when making version changes!
 
 Steps:
 1. Read current version: `cat VERSION`
 2. Update VERSION file with new version
 3. Update `src/msgraphgolangtestingtool.go` const version
-4. Rebuild and test
-5. Verify all three locations match
+4. Update CHANGELOG.md with new entry at the top (include date and all changes)
+5. Rebuild and test
+6. Verify all four locations match (VERSION file, source code, CHANGELOG.md, compiled binary)
