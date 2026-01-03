@@ -1,25 +1,24 @@
 # Version Management Guide
 
-## Current Version
-**1.12.6** (stored in `/VERSION` file)
+## Single Source of Truth
+
+**Version is stored in `src/VERSION` file only.**
+
+The Go source code uses `//go:embed VERSION` to read the version at compile time - no need to update any source code.
 
 ## Version Update Procedure
 
-When updating the version, you MUST update all four locations:
+When updating the version, you MUST update these locations:
 
-### 1. VERSION File
+### 1. VERSION File (Single Source of Truth)
 ```bash
-echo "1.x.y" > VERSION
+echo "1.x.y" > src/VERSION
 ```
 
-### 2. Source Code Constant
-File: `src/msgraphgolangtestingtool.go`
-```go
-const version = "1.x.y"
-```
+### 2. Changelog Entry
+Create a new file in `Changelog/` folder named `{version}.md`:
 
-### 3. CHANGELOG.md
-Add a new entry at the top with the version, date, and changes:
+File: `Changelog/1.x.y.md`
 ```markdown
 ## [1.x.y] - YYYY-MM-DD
 
@@ -36,16 +35,32 @@ Add a new entry at the top with the version, date, and changes:
 - Security improvements
 ```
 
-### 4. Verification
+### 3. Verification
 ```bash
-# Rebuild
+# Rebuild (version is embedded at compile time)
 cd src && go build -o ../msgraphgolangtestingtool.exe
 
-# Verify all locations are updated
-cat VERSION
-grep "const version" src/msgraphgolangtestingtool.go
+# Verify version
+cat src/VERSION
 ./msgraphgolangtestingtool.exe -version
-head -10 CHANGELOG.md  # Check first entry is the new version
+ls Changelog/1.x.y.md  # Check changelog file exists
+```
+
+## Changelog Format
+
+Changelogs are stored as individual files in the `Changelog/` folder:
+- **Location**: `Changelog/{version}.md`
+- **Format**: Keep a Changelog format (https://keepachangelog.com)
+- **Naming**: Use exact version number as filename (e.g., `1.14.0.md`, `1.12.7.md`)
+
+Example structure:
+```
+Changelog/
+├── 1.0.0.md
+├── 1.0.1.md
+├── 1.12.7.md
+├── 1.14.0.md
+└── ...
 ```
 
 ## Versioning Policy
@@ -57,31 +72,21 @@ head -10 CHANGELOG.md  # Check first entry is the new version
 
 ## Release Process
 
-1. Update version in VERSION file, source code, and CHANGELOG.md
-2. Document all changes in CHANGELOG.md following Keep a Changelog format
+1. Update version in `src/VERSION` file
+2. Create changelog file `Changelog/{version}.md` following Keep a Changelog format
 3. Update documentation if needed
-4. Rebuild the application
-5. Verify all four locations match
+4. Rebuild the application (version is embedded automatically)
+5. Verify version matches in binary output
 6. Commit changes with message: "Bump version to 1.x.y"
 7. Create git tag: `git tag v1.x.y`
 8. Push tag: `git push origin v1.x.y`
 9. GitHub Actions will automatically build and create release
 
-## Version History Quick Reference
-
-- **1.12.6** - Current version
-- **1.12.5** - (intermediate version)
-- **1.12.4** - Added verbose mode with env var display, renamed MSGRAPHTENANT to MSGRAPHTENANTID
-- **1.12.0** - Base version (before tracking in VERSION file)
-
 ## For Future AI Assistants
 
-⚠️ **CRITICAL**: Always check and update ALL version-related files when making version changes!
-
 Steps:
-1. Read current version: `cat VERSION`
-2. Update VERSION file with new version
-3. Update `src/msgraphgolangtestingtool.go` const version
-4. Update CHANGELOG.md with new entry at the top (include date and all changes)
-5. Rebuild and test
-6. Verify all four locations match (VERSION file, source code, CHANGELOG.md, compiled binary)
+1. Read current version: `cat src/VERSION`
+2. Update `src/VERSION` file with new version
+3. Create `Changelog/{version}.md` with all changes (include date)
+4. Rebuild: `cd src && go build -o ../msgraphgolangtestingtool.exe`
+5. Verify: `./msgraphgolangtestingtool.exe -version`

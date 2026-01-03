@@ -10,5 +10,6 @@
       "Bash($env:MSGRAPHCOUNT=\"7\")",
       "Bash(echo:*)"
     ]
-  }
+  },
+  "outputStyle": "Learning"
 }
