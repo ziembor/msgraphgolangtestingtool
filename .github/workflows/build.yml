@@ -1,10 +1,9 @@
-name: Build and Upload Artifacts
+name: Build and Release
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -26,3 +25,10 @@ jobs:
       with:
         name: msgraphgolangtestingtool-windows
         path: msgraphgolangtestingtool.exe
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: msgraphgolangtestingtool.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
