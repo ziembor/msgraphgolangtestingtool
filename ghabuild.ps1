@@ -7,6 +7,7 @@ if(test-path $changelogPath) {
 else {
     "## [{0}] {1:yyy-MM-dd}`n`n### Added`n`n- lets's try" -f $versionStr,(get-date) | Out-File -Path $changelogPath -Encoding utf8
     [string]$commit = Get-Content   $changelogPath
+    git add $changelogPath
 } 
 $tag = 'v{0}' -f (Get-Content  .\src\VERSION)
 git checkout -b $branch 
