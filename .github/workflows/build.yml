@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -18,7 +21,17 @@ jobs:
         go-version: '1.21'
 
     - name: Build
-      run: go build .
+      run: go build -C src -o ../msgraphgolangtestingtool.exe
+
+    - name: Verify build output
+      run: |
+        if (Test-Path msgraphgolangtestingtool.exe) {
+          Write-Host "Build successful: msgraphgolangtestingtool.exe found"
+          Get-Item msgraphgolangtestingtool.exe | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Error "Build failed: msgraphgolangtestingtool.exe not found"
+          exit 1
+        }
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -30,5 +43,19 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: msgraphgolangtestingtool.exe
+        body: |
+          ## Microsoft Graph GoLang Testing Tool
+
+          Portable CLI tool for Microsoft Graph API operations.
+
+          ### Installation
+          Download `msgraphgolangtestingtool.exe` and run directly on Windows.
+
+          ### Usage
+          ```powershell
+          .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+          ```
+
+          See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
