@@ -1,3 +1,20 @@
+// Package main provides a portable CLI tool for interacting with Microsoft Graph API
+// to manage Exchange Online (EXO) mailboxes. The tool supports sending emails,
+// creating calendar events, and retrieving inbox messages and calendar events.
+//
+// Authentication methods supported:
+//   - Client Secret: Standard App Registration secret
+//   - PFX Certificate: Certificate file with private key
+//   - Windows Certificate Store: Thumbprint-based certificate retrieval (Windows only)
+//
+// All operations are automatically logged to action-specific CSV files in the
+// system temp directory for audit and troubleshooting purposes.
+//
+// Example usage:
+//
+//	msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action sendmail
+//
+// Version information is embedded from the VERSION file at compile time using go:embed.
 package main
 
 import (
