@@ -147,6 +147,7 @@ func TestListEvents_MockClient(t *testing.T) {
 
 ---
 
+
 ### 2. Add Input Sanitization for File Paths (Priority: Medium-High)
 
 **Current State:** File paths in `-attachments` and `-pfx` flags are used directly
@@ -214,6 +215,7 @@ func validateConfiguration(config *Config) error {
 **Impact:** Medium-High (security + UX)
 
 ---
+
 
 ### 3. Implement Retry Logic for Transient API Failures (Priority: Low-Medium)
 
@@ -326,6 +328,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 
 ---
 
+
 ### 4. Add Structured Logging with Log Levels (Priority: Low)
 
 **Current State:** Mix of `fmt.Printf()`, `log.Printf()`, and verbose mode conditionals
@@ -432,6 +435,7 @@ func setupGraphClient(ctx context.Context, config *Config, logger *Logger) (*msg
 **Alternative:** Consider using a lightweight logging library like `github.com/sirupsen/logrus` or `golang.org/x/exp/slog` (Go 1.21+) instead of custom implementation.
 
 ---
+
 
 ### 5. Add Integration Tests with Real Graph API (Priority: Low - Optional)
 
@@ -552,6 +556,7 @@ go test -tags=integration -v ./src
 
 ---
 
+
 ### 6. Add Command-Line Auto-Completion Support (Priority: Low - Enhancement)
 
 **Current State:** No shell auto-completion
@@ -637,6 +642,7 @@ Register-ArgumentCompleter -CommandName msgraphgolangtestingtool.exe -ScriptBloc
 **Impact:** Low (nice-to-have UX improvement)
 
 ---
+
 
 ### 7. Consider Adding Rate Limit Handling (Priority: Low)
 
@@ -779,6 +785,51 @@ The codebase is production-ready with excellent architecture and documentation. 
 1. Implement file path sanitization (1 hour, HIGH security value)
 2. Add retry logic for network resilience (2-3 hours, HIGH reliability value)
 3. Increase test coverage (2-3 hours, MEDIUM maintenance value)
+
+---
+
+*Code Review Version: 1.15.3 - Fresh Analysis - 2026-01-04*
+
+```json
+{
+  "Title" : "AWS Provider Resources Listing",
+
+  "Section" : "Route 53 Recovery Readiness",
+  "4 resources and 0 data sources",
+  "Subsection" : "Resources",
+  "1. aws_route53recoveryreadiness_cell",
+  "2. aws_route53recoveryreadiness_readiness_check",
+  "3. aws_route53recoveryreadiness_recovery_group",
+  "4. aws_route53recoveryreadiness_resource_set"
+
+}
+```
+
+### 8. Fix Integration Test Architecture (Priority: High)
+
+**Current State:**
+- `src/msgraphgolangtestingtool.go` (Main App) has `func main()` and no build tags.
+- `src/integration_test_tool.go` (Integration Tool) has `func main()` and `//go:build integration`.
+- `src/msgraphgolangtestingtool_lib.go` duplicates ~400 lines of code from the Main App and has `//go:build integration`.
+
+**Issue:**
+Running `go build -tags=integration` or `go test -tags=integration` will cause **compilation errors** due to:
+1.  Duplicate `main()` declaration.
+2.  Duplicate type definitions (`Config`, `CSVLogger`) and functions (`listEvents`, `sendEmail`).
+3.  The integration library (`_lib.go`) is missing critical logic like `retryWithBackoff` found in the main app.
+
+**Recommendation:**
+
+1.  **Isolate Main App:** Add `//go:build !integration` to `src/msgraphgolangtestingtool.go`.
+2.  **Consolidate Shared Logic:** Extract common types (`Config`, `CSVLogger`) and functions (`setupGraphClient`, `listEvents`, `sendEmail`, etc.) into a new file `src/shared.go`.
+    - This file should have NO build tags (or exclude specific platforms if needed).
+    - Remove the duplicated code from `src/msgraphgolangtestingtool_lib.go`.
+3.  **Delete Redundant File:** Once refactored, `src/msgraphgolangtestingtool_lib.go` should be deleted.
+
+**Benefits:**
+- Eliminates code duplication (DRY).
+- Ensures tests run against the *exact same logic* as the application (including retry logic).
+- Fixes build/test commands.
 
 ---
 

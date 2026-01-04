@@ -35,10 +35,10 @@ The tool is designed for **minimal external dependencies** — it compiles into 
 The project follows Semantic Versioning, but the **major version is locked at 1** and cannot be upgraded. All breaking changes or major features will be released as minor version increments within the 1.x.y branch.
 
 **Version Management:**
-- Current version is stored in the `VERSION` file at the project root
-- The version constant in `src/msgraphgolangtestingtool.go` must match the VERSION file
-- When updating the version, update BOTH files to maintain consistency
-- **IMPORTANT**: Future AI assistants should always read and update the VERSION file when making version changes
+- Current version is stored in the `src/VERSION` file
+- The version is automatically embedded into the Go binary at compile time using `//go:embed VERSION` directive
+- **ONLY update `src/VERSION`** - the source code reads it automatically via go:embed
+- **IMPORTANT**: Use the `release.ps1` interactive script for all releases (see Release Process section below)
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 | `-tenantid` | The Azure Directory (Tenant) ID. | **Yes** |
 | `-clientid` | The Application (Client) ID. | **Yes** |
 | `-mailbox` | The target user email address to act upon (sender). | **Yes** |
-| `-action` | Operation to perform: `getevents`, `sendmail`, `sendinvite`, or `getinbox`. | No (default: `getevents`) |
+| `-action` | Operation to perform: `getevents`, `sendmail`, `sendinvite`, or `getinbox`. | No (default: `getinbox`) |
 | **Authentication** | | |
 | `-secret` | The Client Secret. | Use one Auth method |
 | `-pfx` | Path to a local `.pfx` certificate file. | Use one Auth method |
@@ -87,7 +87,7 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 Enable verbose output with the `-verbose` flag to see detailed diagnostic information:
 
 ```powershell
-.\msgraphgolangtestingtool.exe -verbose -tenantid "..." -clientid "..." -secret "..." -mailbox "..." -action getevents
+.\msgraphgolangtestingtool.exe -verbose -tenantid "..." -clientid "..." -secret "..." -mailbox "..." -action getinbox
 ```
 
 Verbose mode displays:
@@ -226,8 +226,8 @@ go build -C src -o msgraphgolangtestingtool.exe
 cd src
 go run . [flags]
 
-# Example: List calendar events using client secret
-.\msgraphgolangtestingtool.exe -tenantid "YOUR_TENANT_ID" -clientid "YOUR_CLIENT_ID" -secret "YOUR_SECRET" -mailbox "user@example.com" -action getevents
+# Example: List inbox messages using client secret (default action)
+.\msgraphgolangtestingtool.exe -tenantid "YOUR_TENANT_ID" -clientid "YOUR_CLIENT_ID" -secret "YOUR_SECRET" -mailbox "user@example.com"
 
 # Example: Send email using PFX certificate
 .\msgraphgolangtestingtool.exe -tenantid"YOUR_TENANT_ID" -clientid "YOUR_CLIENT_ID" -pfx ".\cert.pfx" -pfxpass "password" -mailbox "sender@example.com" -action sendmail -to "recipient@example.com" -subject "Test" -body "Test message"
@@ -238,12 +238,12 @@ go run . [flags]
 # Example: List newest 10 inbox messages
 .\msgraphgolangtestingtool.exe -tenantid"YOUR_TENANT_ID" -clientid "YOUR_CLIENT_ID" -secret "YOUR_SECRET" -mailbox "user@example.com" -action getinbox
 
-# Example: Using environment variables (PowerShell)
+# Example: Using environment variables (PowerShell) - runs default action (getinbox)
 $env:MSGRAPHTENANTID = "YOUR_TENANT_ID"
 $env:MSGRAPHCLIENTID = "YOUR_CLIENT_ID"
 $env:MSGRAPHSECRET = "YOUR_SECRET"
 $env:MSGRAPHMAILBOX = "user@example.com"
-.\msgraphgolangtestingtool.exe -action getevents
+.\msgraphgolangtestingtool.exe
 
 # Example: Mix of environment variables and command-line flags (flags take precedence)
 $env:MSGRAPHTENANTID = "YOUR_TENANT_ID"
@@ -377,108 +377,142 @@ Plus one authentication method (`-secret`, `-pfx`, or `-thumbprint`).
 
 ## Release Process
 
-When you're ready to submit changes to the main branch and create a new release:
+**IMPORTANT: Use the interactive release script for all releases.**
 
-### Step 1: Verify All Version Files Match
+### Quick Start
+
 ```powershell
-# Check that all version references are consistent
-cat VERSION
-grep "const version" src/msgraphgolangtestingtool.go
-head -20 CHANGELOG.md
+# From project root - run the interactive release script
+.\release.ps1
 ```
 
-### Step 2: Check Current Status
+The script will guide you through:
+1. ✅ Version update (enforces 1.x.y format)
+2. ✅ Interactive changelog creation
+3. ✅ Git commit with formatted message
+4. ✅ Push to remote repository
+5. ✅ Create and push git tag (triggers GitHub Actions)
+6. ✅ Optional PR creation
+7. ✅ Optional workflow monitoring
+
+### What the Script Does
+
+The `release.ps1` script automates the entire release process:
+
+**Step 1: Version Management**
+- Reads current version from `src/VERSION`
+- Prompts for new version (must be 1.x.y format - major version locked at 1)
+- Validates version increment (must be greater than current)
+- Updates `src/VERSION` only (version auto-embedded via go:embed)
+
+**Step 2: Changelog Management**
+- Creates `Changelog/{version}.md` with interactive prompts
+- Sections: Added, Changed, Fixed, Security
+- Opens in Notepad if editing existing changelog
+
+**Step 3: Git Operations**
+- Commits changes with formatted message
+- Pushes to remote branch
+- Creates tag `v{version}`
+- Pushes tag to trigger GitHub Actions
+
+**Step 4: GitHub Integration**
+- Optional PR creation via `gh` CLI
+- Optional workflow monitoring
+
+### Version File Location
+
+**IMPORTANT:** The version is stored in **`src/VERSION`** (NOT in the project root).
+
 ```powershell
-git status
+# Check current version
+cat src\VERSION
+# Output: 1.16.1
+
+# Version is embedded at compile time
+cat src\msgraphgolangtestingtool.go | Select-String "go:embed"
+# Output: //go:embed VERSION
 ```
 
-### Step 3: Stage All Changes
+### GitHub Actions Trigger
+
+Pushing a tag matching `v*` triggers `.github/workflows/build.yml`:
+
 ```powershell
-git add .
+# Tag format (created by release.ps1)
+git tag v1.16.2
+git push origin v1.16.2
 ```
 
-### Step 4: Commit Changes
+**Workflow builds:**
+- Windows binary: `msgraphgolangtestingtool.exe`
+- Linux binary: `msgraphgolangtestingtool`
+- Creates ZIP files with binaries + EXAMPLES.md + LICENSE + README.md
+- Creates GitHub Release with tag name
+- Uploads ZIP files to release
+
+### Manual Release (If Needed)
+
+If you need to create a release manually without the script:
+
 ```powershell
-git commit -m "$(cat <<'EOF'
-Release vX.X.X - Brief description
+# 1. Update version
+echo "1.16.2" | Out-File -NoNewline src\VERSION
 
-### Fixed
-- Critical/important fixes
+# 2. Create changelog
+New-Item -Path "Changelog\1.16.2.md" -ItemType File
+notepad Changelog\1.16.2.md
 
-### Security
-- Security improvements
+# 3. Commit
+git add src\VERSION Changelog\1.16.2.md
+git commit -m "Release v1.16.2"
 
-### Changed
-- Feature changes and improvements
+# 4. Tag (triggers GitHub Actions)
+git tag v1.16.2
+git push origin v1.16.2
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-EOF
-)"
-```
-
-### Step 5: Push Current Branch to Remote
-```powershell
-git push origin <current-branch-name>
-```
-
-### Step 6: Merge to Main
-
-**Option A: Direct merge (if you have permissions)**
-```powershell
-git checkout main
-git merge <current-branch-name>
-git push origin main
-```
-
-**Option B: Create Pull Request**
-```powershell
-gh pr create --title "Release vX.X.X" --body "$(cat <<'EOF'
-## Summary
-Brief description of changes
-
-## Changes
-- Critical fixes
-- Security improvements
-- Feature changes
-
-## Test plan
-- [x] Code builds successfully
-- [x] All tests pass
-- [x] Documentation updated
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-### Step 7: Create and Push Git Tag (This triggers GitHub Actions!)
-```powershell
-# Create tag matching the VERSION file
-git tag v1.X.Y
-git push origin v1.X.Y
-```
-
-**IMPORTANT:** Pushing the tag triggers `.github/workflows/build.yml` which will:
-- Build the Windows executable
-- Create a GitHub Release
-- Attach the compiled binary to the release
-- Generate release notes automatically
-
-### Step 8: Verify GitHub Actions Workflow
-```powershell
-# List recent workflow runs
-gh run list --limit 5
-
-# Watch the current run
+# 5. Monitor
 gh run watch
 ```
 
+### Verification
+
+After release:
+
+```powershell
+# Verify local version
+cat src\VERSION
+
+# Verify tag created
+git tag -l "v1.16*"
+
+# Verify workflow started
+gh run list --limit 5
+
+# Watch workflow
+gh run watch
+
+# Verify release created
+gh release view v1.16.2
+
+# Open releases page
+gh browse --repo ziembor/msgraphgolangtestingtool releases
+```
+
 ### Key Points
-- **Tag triggers build**: The GitHub Actions workflow is triggered by pushing a tag matching `v*` pattern
-- **Version consistency**: VERSION file, source code constant (const version), CHANGELOG.md, and git tag must all match
-- **Workflow permissions**: The workflow has `contents: write` permission to create releases
-- **Automatic release**: The build artifact will be automatically attached to the GitHub release
+
+- ✅ **Use release.ps1**: Interactive script handles everything
+- ✅ **Version location**: `src/VERSION` (embedded via go:embed)
+- ✅ **Version format**: 1.x.y only (major version locked at 1)
+- ✅ **Tag triggers build**: Pushing `v*` tag triggers GitHub Actions
+- ✅ **Multi-platform**: Builds Windows and Linux binaries
+- ✅ **Automatic release**: GitHub Release created with ZIPs attached
+
+### Documentation
+
+For detailed release process documentation, see:
+- **RELEASE.md** - Complete release script documentation
+- **BUILD.md** - Build instructions and release notes format
+- **.github/workflows/build.yml** - GitHub Actions workflow definition
 
 ..ooOO End OOoo..
