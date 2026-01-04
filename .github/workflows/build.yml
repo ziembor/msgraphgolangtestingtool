@@ -10,7 +10,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            binary_name: msgraphgolangtestingtool.exe
+            artifact_name: msgraphgolangtestingtool-windows
+          - os: ubuntu-latest
+            binary_name: msgraphgolangtestingtool
+            artifact_name: msgraphgolangtestingtool-linux
 
     steps:
     - uses: actions/checkout@v4
@@ -20,40 +30,66 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Build
-      run: go build -C src -o ../msgraphgolangtestingtool.exe
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      run: go build -C src -o ../${{ matrix.binary_name }}
 
-    - name: Verify build output
+    - name: Build (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        if (Test-Path msgraphgolangtestingtool.exe) {
-          Write-Host "Build successful: msgraphgolangtestingtool.exe found"
-          Get-Item msgraphgolangtestingtool.exe | Select-Object Name, Length, LastWriteTime
+        cd src
+        go build -o ../${{ matrix.binary_name }}
+
+    - name: Verify build output (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        if (Test-Path ${{ matrix.binary_name }}) {
+          Write-Host "Build successful: ${{ matrix.binary_name }} found"
+          Get-Item ${{ matrix.binary_name }} | Select-Object Name, Length, LastWriteTime
         } else {
-          Write-Error "Build failed: msgraphgolangtestingtool.exe not found"
+          Write-Error "Build failed: ${{ matrix.binary_name }} not found"
           exit 1
         }
+
+    - name: Verify build output (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        if [ -f "${{ matrix.binary_name }}" ]; then
+          echo "Build successful: ${{ matrix.binary_name }} found"
+          ls -lh ${{ matrix.binary_name }}
+        else
+          echo "Build failed: ${{ matrix.binary_name }} not found"
+          exit 1
+        fi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: msgraphgolangtestingtool-windows
-        path: msgraphgolangtestingtool.exe
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.binary_name }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: msgraphgolangtestingtool.exe
+        files: ${{ matrix.binary_name }}
         body: |
           ## Microsoft Graph GoLang Testing Tool
 
           Portable CLI tool for Microsoft Graph API operations.
 
           ### Installation
-          Download `msgraphgolangtestingtool.exe` and run directly on Windows.
+          **Windows:** Download `msgraphgolangtestingtool.exe` and run directly.
+          **Linux:** Download `msgraphgolangtestingtool`, make it executable (`chmod +x msgraphgolangtestingtool`), and run.
 
           ### Usage
+          **Windows:**
           ```powershell
           .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+          ```
+
+          **Linux:**
+          ```bash
+          ./msgraphgolangtestingtool -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
           ```
 
           See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.

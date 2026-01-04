@@ -8,6 +8,12 @@
 *.so
 *.dylib
 
+# Tool-specific binaries
+msgraphgolangtestingtool
+msgraphgolangtestingtool-linux
+integration_test_tool
+integration_test_tool.exe
+
 # Test binary, built with `go test -c`
 *.test
 
