@@ -56,7 +56,7 @@ Install-Module -Name Pester -Force -SkipPublisherCheck
 # Example test structure
 Describe "Version Consistency Tests" {
     It "VERSION file should match source code constant" {
-        $versionFile = Get-Content VERSION
+        $versionFile = Get-Content src/VERSION
         $sourceVersion = Select-String -Path src/msgraphgolangtestingtool.go -Pattern 'const version = "(.+)"'
         $versionFile | Should -Be $sourceVersion.Matches.Groups[1].Value
     }
