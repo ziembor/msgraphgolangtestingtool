@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -862,7 +863,15 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 	if len(envVars) == 0 {
 		fmt.Println("  (no MSGRAPH environment variables set)")
 	} else {
-		for key, value := range envVars {
+		// Sort keys for consistent output
+		keys := make([]string, 0, len(envVars))
+		for k := range envVars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			value := envVars[key]
 			// Mask sensitive values
 			displayValue := value
 			if key == "MSGRAPHSECRET" || key == "MSGRAPHPFXPASS" {

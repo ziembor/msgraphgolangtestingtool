@@ -9,7 +9,12 @@
       "Bash(cat:*)",
       "Bash($env:MSGRAPHCOUNT=\"7\")",
       "Bash(echo:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(./src/msgraphgolangtestingtool.exe:*)"
     ]
   },
   "outputStyle": "Learning"
