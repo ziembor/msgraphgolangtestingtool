@@ -34,6 +34,7 @@
       "Bash(go vet:*)",
       "Bash(go doc:*)",
       "Bash(go run:*)"
+      "Bash(go test:*)"
     ]
   },
   "outputStyle": "Learning"
