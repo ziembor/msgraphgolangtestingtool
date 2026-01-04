@@ -118,7 +118,7 @@ func NewConfig() *Config {
 		Subject:       "Automated Tool Notification",
 		Body:          "It's a test message, please ignore",
 		InviteSubject: "System Sync",
-		Action:        ActionGetEvents,
+		Action:        ActionGetInbox,
 		Count:         3,
 		VerboseMode:   false,
 		ShowVersion:   false,
@@ -416,7 +416,7 @@ func parseAndConfigureFlags() *Config {
 	// Count for getevents and getinbox
 	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
 
-	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox (env: MSGRAPHACTION)")
+	action := flag.String("action", "getinbox", "Action to perform: getevents, sendmail, sendinvite, getinbox (env: MSGRAPHACTION)")
 	flag.Parse()
 
 	// Apply environment variables if flags not set via command line

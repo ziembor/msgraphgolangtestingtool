@@ -172,9 +172,9 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 # Run without repeating credentials
 
-.\msgraphgolangtestingtool.exe -action getevents
-.\msgraphgolangtestingtool.exe -action getinbox
-.\msgraphgolangtestingtool.exe -action sendmail -to "someone@example.com"
+.\msgraphgolangtestingtool.exe                                               # Runs default action (getinbox)
+.\msgraphgolangtestingtool.exe -action getevents                            # List calendar events
+.\msgraphgolangtestingtool.exe -action sendmail -to "someone@example.com"   # Send email
 ```
 
 ### Verbose Mode
@@ -182,7 +182,7 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 Enable detailed diagnostic output with the `-verbose` flag:
 
 ```powershell
-.\msgraphgolangtestingtool.exe -verbose -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+.\msgraphgolangtestingtool.exe -verbose -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com"
 ```
 
 **Verbose output includes:**
@@ -209,19 +209,19 @@ Use the `-proxy` flag or `MSGRAPHPROXY` environment variable to route traffic th
 
 ```powershell
 # Using command-line flag
-.\msgraphgolangtestingtool.exe -proxy "http://proxy.example.com:8080" -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+.\msgraphgolangtestingtool.exe -proxy "http://proxy.example.com:8080" -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com"
 
 # Using environment variable
 $env:MSGRAPHPROXY = "http://proxy.example.com:8080"
-.\msgraphgolangtestingtool.exe -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com" -action getevents
+.\msgraphgolangtestingtool.exe -tenantid "xxx" -clientid "yyy" -secret "zzz" -mailbox "user@example.com"
 
-# Combine with other environment variables
+# Combine with other environment variables (runs default action: getinbox)
 $env:MSGRAPHTENANTID = "xxx"
 $env:MSGRAPHCLIENTID = "yyy"
 $env:MSGRAPHSECRET = "zzz"
 $env:MSGRAPHMAILBOX = "user@example.com"
 $env:MSGRAPHPROXY = "http://proxy.example.com:8080"
-.\msgraphgolangtestingtool.exe -action getevents
+.\msgraphgolangtestingtool.exe
 ```
 
 ## Authentication Examples
@@ -229,6 +229,10 @@ $env:MSGRAPHPROXY = "http://proxy.example.com:8080"
 ### Using Client Secret
 
 ```powershell
+# Default action (getinbox)
+.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -secret "xxx" -mailbox "user@example.com"
+
+# Specific action
 .\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -secret "xxx" -mailbox "user@example.com" -action getevents
 ```
 
@@ -241,7 +245,8 @@ $env:MSGRAPHPROXY = "http://proxy.example.com:8080"
 ### Using Windows Certificate Store
 
 ```powershell
-.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -thumbprint "CD817B3329802E692CF30D8DDF896FE811B048AB" -mailbox "user@example.com" -action getinbox
+# Default action (getinbox)
+.\msgraphgolangtestingtool.exe -tenantid"xxx" -clientid"xxx" -thumbprint "CD817B3329802E692CF30D8DDF896FE811B048AB" -mailbox "user@example.com"
 ```
 
 ## Certificate Setup
@@ -267,10 +272,21 @@ This creates:
 ## Documentation
 
 - **[BUILD.md](BUILD.md)**: Detailed build instructions
+- **[RELEASE.md](RELEASE.md)**: Interactive release script documentation
 - **[CLAUDE.md](CLAUDE.md)**: Architecture and code structure for AI assistants
 - **[GEMINI.md](GEMINI.md)**: Comprehensive usage guide
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**: Error troubleshooting and solutions
 - **[SECURITY_PRACTICES.md](SECURITY_PRACTICES.md)**: Security best practices and guidelines
+
+## Release Management
+
+Use the interactive release script to create new releases:
+
+```powershell
+.\release.ps1
+```
+
+The script handles version updates, changelog creation, git operations, and triggers GitHub Actions to build binaries. See **[RELEASE.md](RELEASE.md)** for complete documentation.
 
 ## Output
 
