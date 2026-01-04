@@ -19,7 +19,8 @@
       "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\")",
       "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\\\\src\")",
       "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\\\\ChangeLog\")",
-      "Bash(.msgraphgolangtestingtool.exe -version)"
+      "Bash(.msgraphgolangtestingtool.exe -version)",
+      "Bash(go test:*)"
     ]
   },
   "outputStyle": "Learning"
