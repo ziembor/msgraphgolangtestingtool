@@ -1,3 +1,20 @@
+// Package main provides a portable CLI tool for interacting with Microsoft Graph API
+// to manage Exchange Online (EXO) mailboxes. The tool supports sending emails,
+// creating calendar events, and retrieving inbox messages and calendar events.
+//
+// Authentication methods supported:
+//   - Client Secret: Standard App Registration secret
+//   - PFX Certificate: Certificate file with private key
+//   - Windows Certificate Store: Thumbprint-based certificate retrieval (Windows only)
+//
+// All operations are automatically logged to action-specific CSV files in the
+// system temp directory for audit and troubleshooting purposes.
+//
+// Example usage:
+//
+//	msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action sendmail
+//
+// Version information is embedded from the VERSION file at compile time using go:embed.
 package main
 
 import (
@@ -28,7 +45,7 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
-	"golang.org/x/crypto/pkcs12"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 //go:embed VERSION
@@ -49,46 +66,65 @@ const (
 	StatusError   = "Error"
 )
 
-// Config holds application configuration
+// Config holds all application configuration including command-line flags,
+// environment variables, and runtime state. This centralized configuration
+// structure simplifies passing configuration between functions and improves
+// testability.
 type Config struct {
-	VerboseMode bool
+	// Core configuration
+	ShowVersion bool   // Display version information and exit
+	TenantID    string // Azure AD Tenant ID (GUID format)
+	ClientID    string // Application (Client) ID (GUID format)
+	Mailbox     string // Target user email address
+	Action      string // Operation to perform (getevents, sendmail, sendinvite, getinbox)
+
+	// Authentication configuration (mutually exclusive)
+	Secret     string // Client Secret for authentication
+	PfxPath    string // Path to .pfx certificate file
+	PfxPass    string // Password for .pfx certificate file
+	Thumbprint string // SHA1 thumbprint of certificate in Windows Certificate Store
+
+	// Email recipients (using stringSlice type for comma-separated lists)
+	To              stringSlice // To recipients for email
+	Cc              stringSlice // CC recipients for email
+	Bcc             stringSlice // BCC recipients for email
+	AttachmentFiles stringSlice // File paths to attach to email
+
+	// Email content
+	Subject  string // Email subject line
+	Body     string // Email body text content
+	BodyHTML string // Email body HTML content (future use)
+
+	// Calendar invite configuration
+	InviteSubject string // Subject of calendar meeting invitation
+	StartTime     string // Start time in RFC3339 format (e.g., 2026-01-15T14:00:00Z)
+	EndTime       string // End time in RFC3339 format
+
+	// Network configuration
+	ProxyURL    string        // HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+	MaxRetries  int           // Maximum retry attempts for transient failures (default: 3)
+	RetryDelay  time.Duration // Base delay between retries in milliseconds (default: 2000ms)
+
+	// Runtime configuration
+	VerboseMode bool // Enable verbose diagnostic output
+	Count       int  // Number of items to retrieve (for getevents and getinbox actions)
 }
 
-// Flags holds all command-line flag values and parsed configuration
-type Flags struct {
-	// Core flags
-	ShowVersion bool
-	TenantID    string
-	ClientID    string
-	Mailbox     string
-	Action      string
-
-	// Authentication flags
-	Secret      string
-	PfxPath     string
-	PfxPass     string
-	Thumbprint  string
-
-	// Email recipients (using stringSlice type)
-	To              stringSlice
-	Cc              stringSlice
-	Bcc             stringSlice
-	AttachmentFiles stringSlice
-
-	// Email content flags
-	Subject  string
-	Body     string
-	BodyHTML string
-
-	// Calendar invite flags
-	InviteSubject string
-	StartTime     string
-	EndTime       string
-
-	// Network and other flags
-	ProxyURL string
-	Verbose  bool
-	Count    int
+// NewConfig creates a new Config with sensible default values.
+// Command-line flags and environment variables will override these defaults.
+func NewConfig() *Config {
+	return &Config{
+		// Default values for optional fields
+		Subject:       "Automated Tool Notification",
+		Body:          "It's a test message, please ignore",
+		InviteSubject: "System Sync",
+		Action:        ActionGetEvents,
+		Count:         3,
+		VerboseMode:   false,
+		ShowVersion:   false,
+		MaxRetries:    3,                        // Default: 3 retry attempts
+		RetryDelay:    2000 * time.Millisecond,  // Default: 2 second base delay
+	}
 }
 
 // CSVLogger handles CSV logging operations with periodic buffering
@@ -186,10 +222,18 @@ func (l *CSVLogger) Close() error {
 	return nil
 }
 
-// stringSlice is a custom flag type for comma-separated lists
+// stringSlice implements the flag.Value interface for comma-separated string lists.
+// This allows natural command-line syntax for lists:
+//
+//	-to "user1@example.com,user2@example.com"
+//
+// Values are automatically split on commas and trimmed of whitespace.
+// Empty values and extra whitespace are automatically filtered out.
 type stringSlice []string
 
-// String implements the flag.Value interface
+// String returns the comma-separated string representation of the slice.
+// This implements the flag.Value interface's String method.
+// Returns an empty string if the slice is nil.
 func (s *stringSlice) String() string {
 	if s == nil {
 		return ""
@@ -197,7 +241,13 @@ func (s *stringSlice) String() string {
 	return strings.Join(*s, ",")
 }
 
-// Set implements the flag.Value interface
+// Set parses a comma-separated string into a slice of trimmed strings.
+// This implements the flag.Value interface's Set method.
+//
+// Empty strings are treated as nil slices. Comma-separated values are split,
+// trimmed of whitespace, and empty items are filtered out.
+//
+// Example: "a, b,  , c" becomes []string{"a", "b", "c"}
 func (s *stringSlice) Set(value string) error {
 	if value == "" {
 		*s = nil
@@ -306,8 +356,10 @@ func setupSignalHandling() (context.Context, context.CancelFunc) {
 }
 
 // parseAndConfigureFlags defines all command-line flags, parses them,
-// applies environment variables, and returns populated Flags and Config structs
-func parseAndConfigureFlags() (*Flags, *Config) {
+// applies environment variables, and returns a populated Config struct with
+// all configuration values merged from defaults, environment variables, and
+// command-line arguments (in that order of precedence).
+func parseAndConfigureFlags() *Config {
 	// Customize help output
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Microsoft Graph GoLang Testing Tool - Version %s\n\n", version)
@@ -326,41 +378,45 @@ func parseAndConfigureFlags() (*Flags, *Config) {
 
 	// Define Command Line Parameters
 	showVersion := flag.Bool("version", false, "Show version information")
-	tenantID := flag.String("tenantid", "", "The Azure Tenant ID")
-	clientID := flag.String("clientid", "", "The Application (Client) ID")
-	secret := flag.String("secret", "", "The Client Secret")
-	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file")
-	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file")
-	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store")
-	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address")
+	tenantID := flag.String("tenantid", "", "The Azure Tenant ID (env: MSGRAPHTENANTID)")
+	clientID := flag.String("clientid", "", "The Application (Client) ID (env: MSGRAPHCLIENTID)")
+	secret := flag.String("secret", "", "The Client Secret (env: MSGRAPHSECRET)")
+	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file (env: MSGRAPHPFX)")
+	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file (env: MSGRAPHPFXPASS)")
+	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store (env: MSGRAPHTHUMBPRINT)")
+	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address (env: MSGRAPHMAILBOX)")
 
 	// Recipient flags (using custom stringSlice type)
 	var to, cc, bcc, attachmentFiles stringSlice
-	flag.Var(&to, "to", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty)")
-	flag.Var(&cc, "cc", "Comma-separated list of CC recipients")
-	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients")
+	flag.Var(&to, "to", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty) (env: MSGRAPHTO)")
+	flag.Var(&cc, "cc", "Comma-separated list of CC recipients (env: MSGRAPHCC)")
+	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients (env: MSGRAPHBCC)")
 
 	// Email content flags
-	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email")
-	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text)")
-	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided)")
-	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach")
+	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email (env: MSGRAPHSUBJECT)")
+	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text) (env: MSGRAPHBODY)")
+	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided) (env: MSGRAPHBODYHTML)")
+	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach (env: MSGRAPHATTACHMENTS)")
 
 	// Calendar invite flags
-	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite")
-	startTime := flag.String("start", "", "Start time for calendar invite (RFC3339 format, e.g., 2026-01-15T14:00:00Z). Defaults to now if empty")
-	endTime := flag.String("end", "", "End time for calendar invite (RFC3339 format, e.g., 2026-01-15T15:00:00Z). Defaults to 1 hour after start if empty")
+	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite (env: MSGRAPHINVITESUBJECT)")
+	startTime := flag.String("start", "", "Start time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T14:00:00Z', '2026-01-15T14:00:00'. Defaults to now if empty (env: MSGRAPHSTART)")
+	endTime := flag.String("end", "", "End time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T15:00:00Z', '2026-01-15T15:00:00'. Defaults to 1 hour after start if empty (env: MSGRAPHEND)")
 
 	// Proxy configuration
-	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)")
+	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080) (env: MSGRAPHPROXY)")
+
+	// Retry configuration
+	maxRetries := flag.Int("maxretries", 3, "Maximum retry attempts for transient failures (default: 3) (env: MSGRAPHMAXRETRIES)")
+	retryDelay := flag.Int("retrydelay", 2000, "Base delay between retries in milliseconds (default: 2000ms) (env: MSGRAPHRETRYDELAY)")
 
 	// Verbose mode
 	verbose := flag.Bool("verbose", false, "Enable verbose output (shows configuration, tokens, API details)")
 
 	// Count for getevents and getinbox
-	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3)")
+	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
 
-	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
+	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox (env: MSGRAPHACTION)")
 	flag.Parse()
 
 	// Apply environment variables if flags not set via command line
@@ -403,8 +459,38 @@ func parseAndConfigureFlags() (*Flags, *Config) {
 		}
 	}
 
-	// Create and populate Flags struct
-	flags := &Flags{
+	// Apply MSGRAPHMAXRETRIES environment variable if flag wasn't provided
+	maxRetriesFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "maxretries" {
+			maxRetriesFlagProvided = true
+		}
+	})
+	if !maxRetriesFlagProvided {
+		if envMaxRetries := os.Getenv("MSGRAPHMAXRETRIES"); envMaxRetries != "" {
+			if parsedMaxRetries, err := strconv.Atoi(envMaxRetries); err == nil && parsedMaxRetries >= 0 {
+				*maxRetries = parsedMaxRetries
+			}
+		}
+	}
+
+	// Apply MSGRAPHRETRYDELAY environment variable if flag wasn't provided
+	retryDelayFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "retrydelay" {
+			retryDelayFlagProvided = true
+		}
+	})
+	if !retryDelayFlagProvided {
+		if envRetryDelay := os.Getenv("MSGRAPHRETRYDELAY"); envRetryDelay != "" {
+			if parsedRetryDelay, err := strconv.Atoi(envRetryDelay); err == nil && parsedRetryDelay > 0 {
+				*retryDelay = parsedRetryDelay
+			}
+		}
+	}
+
+	// Create and populate Config struct with all parsed values
+	config := &Config{
 		ShowVersion:     *showVersion,
 		TenantID:        *tenantID,
 		ClientID:        *clientID,
@@ -425,13 +511,10 @@ func parseAndConfigureFlags() (*Flags, *Config) {
 		StartTime:       *startTime,
 		EndTime:         *endTime,
 		ProxyURL:        *proxyURL,
-		Verbose:         *verbose,
+		MaxRetries:      *maxRetries,
+		RetryDelay:      time.Duration(*retryDelay) * time.Millisecond,
+		VerboseMode:     *verbose,
 		Count:           *count,
-	}
-
-	// Create Config struct
-	config := &Config{
-		VerboseMode: *verbose,
 	}
 
 	// Print verbose configuration if enabled
@@ -439,10 +522,17 @@ func parseAndConfigureFlags() (*Flags, *Config) {
 		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime)
 	}
 
-	return flags, config
+	return config
 }
 
-// validateEmail performs basic email format validation
+// validateEmail performs basic email format validation by checking for the presence
+// of an @ symbol and ensuring both local-part and domain are non-empty.
+//
+// This is a simple structural validation, not RFC 5322 compliant. It's sufficient
+// for catching obvious typos before making API calls. Leading and trailing whitespace
+// is automatically trimmed.
+//
+// Returns an error if the email format is invalid, nil if valid.
 func validateEmail(email string) error {
 	email = strings.TrimSpace(email)
 	if email == "" {
@@ -458,7 +548,14 @@ func validateEmail(email string) error {
 	return nil
 }
 
-// validateEmails validates a slice of email addresses
+// validateEmails validates a slice of email addresses, ensuring all entries are
+// properly formatted. This is a convenience wrapper around validateEmail for batch validation.
+//
+// Parameters:
+//   - emails: slice of email addresses to validate
+//   - fieldName: descriptive name for error messages (e.g., "To recipients")
+//
+// Returns an error at the first invalid email found, nil if all are valid.
 func validateEmails(emails []string, fieldName string) error {
 	for _, email := range emails {
 		if err := validateEmail(email); err != nil {
@@ -468,7 +565,17 @@ func validateEmails(emails []string, fieldName string) error {
 	return nil
 }
 
-// validateGUID validates that a string is a valid GUID format
+// validateGUID validates that a string matches standard GUID format (36 characters
+// with dashes at positions 8, 13, 18, 23). This is used to validate Tenant ID and
+// Client ID before making API calls.
+//
+// Example valid GUID: "12345678-1234-1234-1234-123456789012"
+//
+// Parameters:
+//   - guid: the GUID string to validate
+//   - fieldName: descriptive name for error messages (e.g., "Tenant ID")
+//
+// Returns an error if the GUID format is invalid, nil if valid.
 func validateGUID(guid, fieldName string) error {
 	guid = strings.TrimSpace(guid)
 	if guid == "" {
@@ -485,40 +592,86 @@ func validateGUID(guid, fieldName string) error {
 	return nil
 }
 
-// validateRFC3339Time validates RFC3339 time format
+// parseFlexibleTime parses a time string accepting multiple formats:
+//   - RFC3339 with timezone: "2026-01-15T14:00:00Z" or "2026-01-15T14:00:00+01:00"
+//   - PowerShell sortable format: "2026-01-15T14:00:00" (assumes UTC if no timezone)
+//
+// Returns the parsed time and any error encountered.
+func parseFlexibleTime(timeStr string) (time.Time, error) {
+	if timeStr == "" {
+		return time.Time{}, fmt.Errorf("time string is empty")
+	}
+
+	// Try RFC3339 first (with timezone)
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err == nil {
+		return t, nil
+	}
+
+	// Try PowerShell sortable format (without timezone) - assume UTC
+	// Format: "2006-01-02T15:04:05"
+	t, err = time.Parse("2006-01-02T15:04:05", timeStr)
+	if err == nil {
+		// Convert to UTC explicitly
+		return t.UTC(), nil
+	}
+
+	// Neither format worked
+	return time.Time{}, fmt.Errorf("invalid time format (expected RFC3339 like '2026-01-15T14:00:00Z' or PowerShell sortable like '2026-01-15T14:00:00')")
+}
+
+// validateRFC3339Time validates that a string matches RFC3339 or PowerShell sortable timestamp format.
+// This is used for calendar invite start and end times.
+//
+// Supported formats:
+//   - RFC3339 with timezone: "2026-01-15T14:00:00Z" or "2026-01-15T14:00:00+01:00"
+//   - PowerShell sortable (Get-Date -Format s): "2026-01-15T14:00:00" (assumes UTC)
+//
+// Empty strings are allowed and return nil (defaults will be used).
+//
+// Parameters:
+//   - timeStr: the timestamp string to validate
+//   - fieldName: descriptive name for error messages (e.g., "Start time")
+//
+// Returns an error if the time format is invalid, nil if valid or empty.
 func validateRFC3339Time(timeStr, fieldName string) error {
 	if timeStr == "" {
 		return nil // Empty is allowed (defaults are used)
 	}
-	_, err := time.Parse(time.RFC3339, timeStr)
+	_, err := parseFlexibleTime(timeStr)
 	if err != nil {
-		return fmt.Errorf("%s is not in valid RFC3339 format (e.g., 2026-01-15T14:00:00Z): %w", fieldName, err)
+		return fmt.Errorf("%s: %w", fieldName, err)
 	}
 	return nil
 }
 
-// validateConfiguration checks that required configuration parameters are valid
-func validateConfiguration(flags *Flags) error {
+// validateConfiguration validates all required configuration fields and ensures
+// authentication method is properly configured. This performs both structural
+// validation (GUID format, email format) and business logic validation
+// (mutually exclusive auth methods, valid action names).
+//
+// Returns an error if validation fails, nil if all checks pass.
+func validateConfiguration(config *Config) error {
 	// Validate required fields with format checking
-	if err := validateGUID(flags.TenantID, "Tenant ID"); err != nil {
+	if err := validateGUID(config.TenantID, "Tenant ID"); err != nil {
 		return err
 	}
-	if err := validateGUID(flags.ClientID, "Client ID"); err != nil {
+	if err := validateGUID(config.ClientID, "Client ID"); err != nil {
 		return err
 	}
-	if err := validateEmail(flags.Mailbox); err != nil {
+	if err := validateEmail(config.Mailbox); err != nil {
 		return fmt.Errorf("invalid mailbox: %w", err)
 	}
 
 	// Check that at least one authentication method is provided
 	authMethodCount := 0
-	if flags.Secret != "" {
+	if config.Secret != "" {
 		authMethodCount++
 	}
-	if flags.PfxPath != "" {
+	if config.PfxPath != "" {
 		authMethodCount++
 	}
-	if flags.Thumbprint != "" {
+	if config.Thumbprint != "" {
 		authMethodCount++
 	}
 
@@ -530,27 +683,27 @@ func validateConfiguration(flags *Flags) error {
 	}
 
 	// Validate email lists if provided
-	if len(flags.To) > 0 {
-		if err := validateEmails(flags.To, "To recipients"); err != nil {
+	if len(config.To) > 0 {
+		if err := validateEmails(config.To, "To recipients"); err != nil {
 			return err
 		}
 	}
-	if len(flags.Cc) > 0 {
-		if err := validateEmails(flags.Cc, "CC recipients"); err != nil {
+	if len(config.Cc) > 0 {
+		if err := validateEmails(config.Cc, "CC recipients"); err != nil {
 			return err
 		}
 	}
-	if len(flags.Bcc) > 0 {
-		if err := validateEmails(flags.Bcc, "BCC recipients"); err != nil {
+	if len(config.Bcc) > 0 {
+		if err := validateEmails(config.Bcc, "BCC recipients"); err != nil {
 			return err
 		}
 	}
 
 	// Validate RFC3339 times if provided
-	if err := validateRFC3339Time(flags.StartTime, "Start time"); err != nil {
+	if err := validateRFC3339Time(config.StartTime, "Start time"); err != nil {
 		return err
 	}
-	if err := validateRFC3339Time(flags.EndTime, "End time"); err != nil {
+	if err := validateRFC3339Time(config.EndTime, "End time"); err != nil {
 		return err
 	}
 
@@ -561,18 +714,22 @@ func validateConfiguration(flags *Flags) error {
 		ActionSendInvite: true,
 		ActionGetInbox:   true,
 	}
-	if !validActions[flags.Action] {
-		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", flags.Action)
+	if !validActions[config.Action] {
+		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", config.Action)
 	}
 
 	return nil
 }
 
-// initializeServices sets up CSV logging and proxy configuration
-// Returns the CSV logger (or nil if initialization failed)
-func initializeServices(flags *Flags) (*CSVLogger, error) {
+// initializeServices sets up CSV logging and proxy configuration based on
+// the provided configuration. Creates a CSV logger for the specified action
+// and configures HTTP/HTTPS proxy environment variables if a proxy URL is specified.
+//
+// Returns the CSV logger (or nil if initialization failed) and any error encountered.
+// If CSV logger initialization fails, a warning is logged but execution continues.
+func initializeServices(config *Config) (*CSVLogger, error) {
 	// Initialize CSV logging
-	logger, err := NewCSVLogger(flags.Action)
+	logger, err := NewCSVLogger(config.Action)
 	if err != nil {
 		log.Printf("Warning: Could not initialize CSV logging: %v", err)
 		logger = nil // Continue without logging
@@ -580,19 +737,26 @@ func initializeServices(flags *Flags) (*CSVLogger, error) {
 
 	// Configure proxy if specified
 	// Go's http package automatically uses HTTP_PROXY/HTTPS_PROXY environment variables
-	if flags.ProxyURL != "" {
-		os.Setenv("HTTP_PROXY", flags.ProxyURL)
-		os.Setenv("HTTPS_PROXY", flags.ProxyURL)
-		fmt.Printf("Using proxy: %s\n", flags.ProxyURL)
+	if config.ProxyURL != "" {
+		os.Setenv("HTTP_PROXY", config.ProxyURL)
+		os.Setenv("HTTPS_PROXY", config.ProxyURL)
+		fmt.Printf("Using proxy: %s\n", config.ProxyURL)
 	}
 
 	return logger, nil
 }
 
 // setupGraphClient creates credentials and initializes the Microsoft Graph SDK client
-func setupGraphClient(ctx context.Context, flags *Flags, config *Config) (*msgraphsdk.GraphServiceClient, error) {
+// using the authentication method specified in the configuration (client secret, PFX
+// certificate, or Windows Certificate Store thumbprint).
+//
+// The function also retrieves and displays token information in verbose mode, including
+// token expiration time and validity period.
+//
+// Returns the initialized GraphServiceClient and any error encountered during setup.
+func setupGraphClient(ctx context.Context, config *Config) (*msgraphsdk.GraphServiceClient, error) {
 	// Setup Authentication
-	cred, err := getCredential(flags.TenantID, flags.ClientID, flags.Secret, flags.PfxPath, flags.PfxPass, flags.Thumbprint, config)
+	cred, err := getCredential(config.TenantID, config.ClientID, config.Secret, config.PfxPath, config.PfxPass, config.Thumbprint, config)
 	if err != nil {
 		return nil, fmt.Errorf("authentication setup failed: %w", err)
 	}
@@ -623,56 +787,172 @@ func setupGraphClient(ctx context.Context, flags *Flags, config *Config) (*msgra
 	return client, nil
 }
 
-// executeAction dispatches to the appropriate action handler based on flags.Action
-func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, flags *Flags, config *Config, logger *CSVLogger) error {
-	switch flags.Action {
+// isRetryableError determines if an error is transient and worth retrying.
+// Returns true for network timeouts, Graph API throttling (429), and service
+// unavailability (503) errors.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for context cancellation - never retry these
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	// Note: ODataError wraps the underlying ResponseError, so we rely on
+	// the azcore.ResponseError check below for status codes
+
+	// Check for Azure SDK response errors
+	var respErr *azcore.ResponseError
+	if errors.As(err, &respErr) {
+		if respErr.StatusCode == 429 || respErr.StatusCode == 503 || respErr.StatusCode == 504 {
+			return true
+		}
+	}
+
+	// Check error message for common transient patterns
+	errMsg := strings.ToLower(err.Error())
+	transientPatterns := []string{
+		"timeout",
+		"connection reset",
+		"connection refused",
+		"temporary failure",
+		"try again",
+		"i/o timeout",
+		"no such host",
+		"network is unreachable",
+	}
+
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errMsg, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// retryWithBackoff wraps an operation with exponential backoff retry logic.
+// It attempts the operation up to maxRetries times, waiting with exponential
+// backoff between attempts. Only retries errors identified by isRetryableError.
+//
+// The backoff delay follows the pattern: baseDelay * (2^attempt), capped at 30 seconds.
+// For example, with baseDelay=2s: 2s, 4s, 8s, 16s, 30s, 30s...
+//
+// Returns the last error encountered if all retries are exhausted, or nil on success.
+func retryWithBackoff(ctx context.Context, maxRetries int, baseDelay time.Duration, operation func() error) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Execute the operation
+		lastErr = operation()
+
+		// Success - return immediately
+		if lastErr == nil {
+			if attempt > 0 {
+				log.Printf("Operation succeeded after %d retries", attempt)
+			}
+			return nil
+		}
+
+		// Check if error is retryable
+		if !isRetryableError(lastErr) {
+			// Non-retryable error - fail immediately
+			return lastErr
+		}
+
+		// Last attempt failed - return error
+		if attempt == maxRetries {
+			return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+		}
+
+		// Calculate exponential backoff delay (cap at 30 seconds)
+		delay := baseDelay * time.Duration(1<<uint(attempt))
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+
+		log.Printf("Retryable error encountered (attempt %d/%d): %v. Retrying in %v...",
+			attempt+1, maxRetries, lastErr, delay)
+
+		// Wait with context cancellation support
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("retry cancelled: %w", ctx.Err())
+		case <-time.After(delay):
+			// Continue to next retry attempt
+		}
+	}
+
+	return lastErr
+}
+
+// executeAction dispatches to the appropriate action handler based on config.Action.
+// Supported actions are: getevents, sendmail, sendinvite, and getinbox.
+//
+// For sendmail action, if no recipients are specified, the email is sent to the
+// mailbox owner (self). All actions log their operations to the provided CSV logger.
+//
+// Returns an error if the action fails or if the action name is unknown.
+func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config, logger *CSVLogger) error {
+	switch config.Action {
 	case ActionGetEvents:
-		if err := listEvents(ctx, client, flags.Mailbox, flags.Count, config, logger); err != nil {
+		if err := listEvents(ctx, client, config.Mailbox, config.Count, config, logger); err != nil {
 			return fmt.Errorf("failed to list events: %w", err)
 		}
 	case ActionSendMail:
 		// If no recipients specified at all, default 'to' to the sender mailbox
-		if len(flags.To) == 0 && len(flags.Cc) == 0 && len(flags.Bcc) == 0 {
-			flags.To = []string{flags.Mailbox}
+		if len(config.To) == 0 && len(config.Cc) == 0 && len(config.Bcc) == 0 {
+			config.To = []string{config.Mailbox}
 		}
 
-		sendEmail(ctx, client, flags.Mailbox, flags.To, flags.Cc, flags.Bcc, flags.Subject, flags.Body, flags.BodyHTML, flags.AttachmentFiles, config, logger)
+		sendEmail(ctx, client, config.Mailbox, config.To, config.Cc, config.Bcc, config.Subject, config.Body, config.BodyHTML, config.AttachmentFiles, config, logger)
 	case ActionSendInvite:
-		createInvite(ctx, client, flags.Mailbox, flags.InviteSubject, flags.StartTime, flags.EndTime, config, logger)
+		createInvite(ctx, client, config.Mailbox, config.InviteSubject, config.StartTime, config.EndTime, config, logger)
 	case ActionGetInbox:
-		if err := listInbox(ctx, client, flags.Mailbox, flags.Count, config, logger); err != nil {
+		if err := listInbox(ctx, client, config.Mailbox, config.Count, config, logger); err != nil {
 			return fmt.Errorf("failed to list inbox: %w", err)
 		}
 	default:
-		return fmt.Errorf("unknown action: %s", flags.Action)
+		return fmt.Errorf("unknown action: %s", config.Action)
 	}
 
 	return nil
 }
 
+// run is the main application entry point that orchestrates the tool's execution flow.
+// It performs the following steps:
+//  1. Sets up graceful shutdown handling for interrupt signals
+//  2. Parses and validates configuration from flags and environment variables
+//  3. Initializes services (CSV logging, proxy configuration)
+//  4. Creates Microsoft Graph SDK client with appropriate authentication
+//  5. Executes the requested action (getevents, sendmail, sendinvite, getinbox)
+//
+// Returns an error if any step fails, nil on successful completion.
 func run() error {
 	// 1. Setup signal handling for graceful shutdown
 	ctx, cancel := setupSignalHandling()
 	defer cancel()
 
 	// 2. Parse command-line flags and apply environment variables
-	flags, config := parseAndConfigureFlags()
+	config := parseAndConfigureFlags()
 
 	// 3. Handle version flag early exit
-	if flags.ShowVersion {
+	if config.ShowVersion {
 		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
 		return nil
 	}
 
 	// 4. Validate configuration
-	if err := validateConfiguration(flags); err != nil {
+	if err := validateConfiguration(config); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	// 5. Initialize services (CSV logging and proxy)
-	logger, err := initializeServices(flags)
+	logger, err := initializeServices(config)
 	if err != nil {
 		// Error already logged in initializeServices, continue without logger
 	}
@@ -681,13 +961,13 @@ func run() error {
 	}
 
 	// 6. Setup Microsoft Graph client
-	client, err := setupGraphClient(ctx, flags, config)
+	client, err := setupGraphClient(ctx, config)
 	if err != nil {
 		return err
 	}
 
 	// 7. Execute the requested action
-	return executeAction(ctx, client, flags, config, logger)
+	return executeAction(ctx, client, config, logger)
 }
 
 func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {
@@ -727,12 +1007,10 @@ func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint stri
 }
 
 func createCertCredential(tenantID, clientID string, pfxData []byte, password string) (*azidentity.ClientCertificateCredential, error) {
-	// Decode PFX using pkcs12
-	// pkcs12.Decode returns the first private key and certificate.
-	key, cert, err := pkcs12.Decode(pfxData, password)
+	// Decode PFX using go-pkcs12 library (supports SHA-256 and other modern algorithms)
+	// pkcs12.DecodeChain returns private key and full certificate chain
+	key, cert, caCerts, err := pkcs12.DecodeChain(pfxData, password)
 	if err != nil {
-		// Fallback: Sometimes pkcs12.Decode fails if the PFX has complex structure.
-		// We could try ToPEM logic here if needed, but Decode is usually sufficient for standard exports.
 		return nil, fmt.Errorf("failed to decode PFX: %w", err)
 	}
 
@@ -742,15 +1020,19 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 		return nil, fmt.Errorf("decoded key is not a valid crypto.PrivateKey")
 	}
 
-	// Options
+	// Build certificate chain: primary cert + CA certs
+	// azidentity expects a slice of certs with the leaf certificate first
+	certs := []*x509.Certificate{cert}
+	if len(caCerts) > 0 {
+		certs = append(certs, caCerts...)
+	}
+
+	// Options - send full certificate chain for better compatibility
 	opts := &azidentity.ClientCertificateCredentialOptions{
 		SendCertificateChain: true,
 	}
 
 	// Create Credential
-	// azidentity expects a slice of certs.
-	certs := []*x509.Certificate{cert}
-
 	return azidentity.NewClientCertificateCredential(tenantID, clientID, certs, privKey, opts)
 }
 
@@ -765,7 +1047,17 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Eventable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		var oDataError *odataerrors.ODataError
 		if errors.As(err, &oDataError) {
@@ -778,7 +1070,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 		return fmt.Errorf("error fetching calendar for %s: %w", mailbox, err)
 	}
 
-	events := result.GetValue()
+	events := getValueFunc()
 	eventCount := len(events)
 
 	logVerbose(config.VerboseMode, "API response received: %d events", eventCount)
@@ -977,7 +1269,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if startTimeStr == "" {
 		startTime = time.Now()
 	} else {
-		startTime, err = time.Parse(time.RFC3339, startTimeStr)
+		startTime, err = parseFlexibleTime(startTimeStr)
 		if err != nil {
 			log.Printf("Error parsing start time: %v. Using current time instead.", err)
 			startTime = time.Now()
@@ -989,7 +1281,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if endTimeStr == "" {
 		endTime = startTime.Add(1 * time.Hour)
 	} else {
-		endTime, err = time.Parse(time.RFC3339, endTimeStr)
+		endTime, err = parseFlexibleTime(endTimeStr)
 		if err != nil {
 			log.Printf("Error parsing end time: %v. Using start + 1 hour instead.", err)
 			endTime = startTime.Add(1 * time.Hour)
@@ -1051,12 +1343,22 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Messageable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		return fmt.Errorf("error fetching inbox for %s: %w", mailbox, err)
 	}
 
-	messages := result.GetValue()
+	messages := getValueFunc()
 	messageCount := len(messages)
 
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)

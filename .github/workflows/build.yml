@@ -10,7 +10,19 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            binary_name: msgraphgolangtestingtool.exe
+            artifact_name: msgraphgolangtestingtool-windows
+            zip_name: msgraphgolangtestingtool-windows.zip
+          - os: ubuntu-latest
+            binary_name: msgraphgolangtestingtool
+            artifact_name: msgraphgolangtestingtool-linux
+            zip_name: msgraphgolangtestingtool-linux.zip
 
     steps:
     - uses: actions/checkout@v4
@@ -20,40 +32,88 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Build
-      run: go build -C src -o ../msgraphgolangtestingtool.exe
+    - name: Build (Windows)
+      if: matrix.os == 'windows-latest'
+      run: go build -C src -o ../${{ matrix.binary_name }}
 
-    - name: Verify build output
+    - name: Build (Linux)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        if (Test-Path msgraphgolangtestingtool.exe) {
-          Write-Host "Build successful: msgraphgolangtestingtool.exe found"
-          Get-Item msgraphgolangtestingtool.exe | Select-Object Name, Length, LastWriteTime
+        cd src
+        go build -o ../${{ matrix.binary_name }}
+
+    - name: Verify build output (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        if (Test-Path ${{ matrix.binary_name }}) {
+          Write-Host "Build successful: ${{ matrix.binary_name }} found"
+          Get-Item ${{ matrix.binary_name }} | Select-Object Name, Length, LastWriteTime
         } else {
-          Write-Error "Build failed: msgraphgolangtestingtool.exe not found"
+          Write-Error "Build failed: ${{ matrix.binary_name }} not found"
           exit 1
         }
+
+    - name: Verify build output (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        if [ -f "${{ matrix.binary_name }}" ]; then
+          echo "Build successful: ${{ matrix.binary_name }} found"
+          ls -lh ${{ matrix.binary_name }}
+        else
+          echo "Build failed: ${{ matrix.binary_name }} not found"
+          exit 1
+        fi
+
+    - name: Create ZIP archive (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Compress-Archive -Path ${{ matrix.binary_name }} -DestinationPath ${{ matrix.zip_name }}
+        Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
+        Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
+
+    - name: Create ZIP archive (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }}
+        echo "Created ZIP archive: ${{ matrix.zip_name }}"
+        ls -lh ${{ matrix.zip_name }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: msgraphgolangtestingtool-windows
-        path: msgraphgolangtestingtool.exe
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.zip_name }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: msgraphgolangtestingtool.exe
+        files: ${{ matrix.zip_name }}
         body: |
           ## Microsoft Graph GoLang Testing Tool
 
           Portable CLI tool for Microsoft Graph API operations.
 
           ### Installation
-          Download `msgraphgolangtestingtool.exe` and run directly on Windows.
+          **Windows:**
+          1. Download `msgraphgolangtestingtool-windows.zip`
+          2. Extract the ZIP file
+          3. Run `msgraphgolangtestingtool.exe` directly
+
+          **Linux:**
+          1. Download `msgraphgolangtestingtool-linux.zip`
+          2. Extract the ZIP file: `unzip msgraphgolangtestingtool-linux.zip`
+          3. Make it executable: `chmod +x msgraphgolangtestingtool`
+          4. Run: `./msgraphgolangtestingtool`
 
           ### Usage
+          **Windows:**
           ```powershell
           .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+          ```
+
+          **Linux:**
+          ```bash
+          ./msgraphgolangtestingtool -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
           ```
 
           See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
