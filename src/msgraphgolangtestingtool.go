@@ -878,9 +878,7 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 	} else if pfxPath != "" {
 		fmt.Println("  Method: PFX Certificate")
 		fmt.Printf("  PFX Path: %s\n", pfxPath)
-		if pfxPath != "" {
-			fmt.Println("  PFX Password: ******** (provided)")
-		}
+		fmt.Println("  PFX Password: ******** (provided)")
 	} else if thumbprint != "" {
 		fmt.Println("  Method: Windows Certificate Store")
 		fmt.Printf("  Thumbprint: %s\n", thumbprint)
