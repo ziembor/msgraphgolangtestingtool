@@ -63,10 +63,12 @@ Lists the newest 10 messages from a user's inbox with sender, recipients, subjec
 
 ### CSV Logging
 
-All operations are automatically logged to a daily CSV file in the Windows temp directory:
-- **Location**: `%TEMP%\_msgraphgolangtestingtool_YYYY-MM-DD.csv`
+All operations are automatically logged to action-specific CSV files in the Windows temp directory:
+- **Location**: `%TEMP%\_msgraphgolangtestingtool_{action}_YYYY-MM-DD.csv`
+- **Examples**: `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`, `sendinvite_2026-01-03.csv`, `getinbox_2026-01-03.csv`
 - **Content**: Timestamps, action details, results, and status
-- **Mode**: Append (multiple runs on the same day add to the same file)
+- **Mode**: Append (multiple runs of the same action on the same day add to the same file)
+- **Schema**: Each action type has its own consistent schema to prevent column conflicts
 
 ## Quick Start
 
@@ -268,11 +270,17 @@ This creates:
 
 ## Output
 
-All operations display results on screen and simultaneously log to:
+All operations display results on screen and simultaneously log to action-specific CSV files:
 
 ```powershell
-C:\Users\<Username>\AppData\Local\Temp\_msgraphgolangtestingtool_YYYY-MM-DD.csv
+C:\Users\<Username>\AppData\Local\Temp\_msgraphgolangtestingtool_{action}_YYYY-MM-DD.csv
 ```
+
+Examples:
+- `_msgraphgolangtestingtool_sendmail_2026-01-03.csv`
+- `_msgraphgolangtestingtool_getevents_2026-01-03.csv`
+- `_msgraphgolangtestingtool_sendinvite_2026-01-03.csv`
+- `_msgraphgolangtestingtool_getinbox_2026-01-03.csv`
 
 The CSV file path is displayed at the start of each operation.
 

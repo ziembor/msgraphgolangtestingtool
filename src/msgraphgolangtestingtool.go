@@ -46,9 +46,93 @@ const (
 	StatusError   = "Error"
 )
 
-var csvWriter *csv.Writer
-var csvFile *os.File
-var verboseMode bool
+// Config holds application configuration
+type Config struct {
+	VerboseMode bool
+}
+
+// CSVLogger handles CSV logging operations
+type CSVLogger struct {
+	writer *csv.Writer
+	file   *os.File
+	action string
+}
+
+// NewCSVLogger creates a new CSV logger for the specified action
+func NewCSVLogger(action string) (*CSVLogger, error) {
+	// Get temp directory
+	tempDir := os.TempDir()
+
+	// Create filename with action and current date
+	dateStr := time.Now().Format("2006-01-02")
+	fileName := fmt.Sprintf("_msgraphgolangtestingtool_%s_%s.csv", action, dateStr)
+	filePath := filepath.Join(tempDir, fileName)
+
+	// Open or create file (append mode)
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("could not create CSV log file: %w", err)
+	}
+
+	logger := &CSVLogger{
+		writer: csv.NewWriter(file),
+		file:   file,
+		action: action,
+	}
+
+	// Check if file is new (empty) to write headers
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Printf("Warning: Could not stat CSV file: %v", err)
+	} else if fileInfo.Size() == 0 {
+		// Write header based on action type
+		logger.writeHeader()
+	}
+
+	fmt.Printf("Logging to: %s\n\n", filePath)
+	return logger, nil
+}
+
+// writeHeader writes the CSV header based on action type
+func (l *CSVLogger) writeHeader() {
+	var header []string
+	switch l.action {
+	case ActionGetEvents:
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Event Subject", "Event ID"}
+	case ActionSendMail:
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "To", "CC", "BCC", "Subject", "Body Type", "Attachments"}
+	case ActionSendInvite:
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "Start Time", "End Time", "Event ID"}
+	case ActionGetInbox:
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "From", "To", "Received DateTime"}
+	default:
+		header = []string{"Timestamp", "Action", "Status", "Details"}
+	}
+	l.writer.Write(header)
+	l.writer.Flush()
+}
+
+// WriteRow writes a row to the CSV file
+func (l *CSVLogger) WriteRow(row []string) {
+	if l.writer != nil {
+		// Prepend timestamp
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		fullRow := append([]string{timestamp}, row...)
+		l.writer.Write(fullRow)
+		l.writer.Flush()
+	}
+}
+
+// Close closes the CSV file
+func (l *CSVLogger) Close() error {
+	if l.writer != nil {
+		l.writer.Flush()
+	}
+	if l.file != nil {
+		return l.file.Close()
+	}
+	return nil
+}
 
 // applyEnvVars applies environment variable values to flags that weren't explicitly set via command line
 func applyEnvVars(envMap map[string]*string) {
@@ -149,8 +233,10 @@ func run() error {
 	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
 	flag.Parse()
 
-	// Set global verbose flag
-	verboseMode = *verbose
+	// Create configuration
+	config := &Config{
+		VerboseMode: *verbose,
+	}
 
 	// Check version flag
 	if *showVersion {
@@ -197,7 +283,7 @@ func run() error {
 	}
 
 	// Print verbose configuration if enabled
-	if verboseMode {
+	if config.VerboseMode {
 		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, *toRaw, *ccRaw, *bccRaw, *subject, *body, *bodyHTML, *attachments, *inviteSubject, *startTime, *endTime)
 	}
 
@@ -209,8 +295,14 @@ func run() error {
 	}
 
 	// Initialize CSV logging
-	initCSVLog(*action)
-	defer closeCSVLog()
+	logger, err := NewCSVLogger(*action)
+	if err != nil {
+		log.Printf("Warning: Could not initialize CSV logging: %v", err)
+		logger = nil // Continue without logging
+	}
+	if logger != nil {
+		defer logger.Close()
+	}
 
 	// Configure proxy if specified
 	// Go's http package automatically uses HTTP_PROXY/HTTPS_PROXY environment variables
@@ -221,19 +313,19 @@ func run() error {
 	}
 
 	// 2. Setup Authentication
-	cred, err := getCredential(*tenantID, *clientID, *secret, *pfxPath, *pfxPass, *thumbprint)
+	cred, err := getCredential(*tenantID, *clientID, *secret, *pfxPath, *pfxPass, *thumbprint, config)
 	if err != nil {
 		return fmt.Errorf("authentication setup failed: %w", err)
 	}
 
 	// Get and display token information if verbose
-	if verboseMode {
+	if config.VerboseMode {
 		ctx := context.Background()
 		token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
 			Scopes: []string{"https://graph.microsoft.com/.default"},
 		})
 		if err != nil {
-			logVerbose("Warning: Could not retrieve token for verbose display: %v", err)
+			logVerbose(config.VerboseMode, "Warning: Could not retrieve token for verbose display: %v", err)
 		} else {
 			printTokenInfo(token)
 		}
@@ -245,9 +337,9 @@ func run() error {
 		return fmt.Errorf("graph client initialization failed: %w", err)
 	}
 
-	if verboseMode {
-		logVerbose("Graph SDK client initialized successfully")
-		logVerbose("Target scope: https://graph.microsoft.com/.default")
+	if config.VerboseMode {
+		logVerbose(config.VerboseMode, "Graph SDK client initialized successfully")
+		logVerbose(config.VerboseMode, "Target scope: https://graph.microsoft.com/.default")
 	}
 
 	ctx := context.Background()
@@ -255,7 +347,7 @@ func run() error {
 	// 3. Execute Actions based on flags
 	switch *action {
 	case ActionGetEvents:
-		if err := listEvents(ctx, client, *mailbox, *count); err != nil {
+		if err := listEvents(ctx, client, *mailbox, *count, config, logger); err != nil {
 			return fmt.Errorf("failed to list events: %w", err)
 		}
 	case ActionSendMail:
@@ -269,11 +361,11 @@ func run() error {
 			to = []string{*mailbox}
 		}
 
-		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body, *bodyHTML, attachmentFiles)
+		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body, *bodyHTML, attachmentFiles, config, logger)
 	case ActionSendInvite:
-		createInvite(ctx, client, *mailbox, *inviteSubject, *startTime, *endTime)
+		createInvite(ctx, client, *mailbox, *inviteSubject, *startTime, *endTime, config, logger)
 	case ActionGetInbox:
-		if err := listInbox(ctx, client, *mailbox, *count); err != nil {
+		if err := listInbox(ctx, client, *mailbox, *count, config, logger); err != nil {
 			return fmt.Errorf("failed to list inbox: %w", err)
 		}
 	default:
@@ -298,40 +390,40 @@ func parseList(s string) []string {
 	return result
 }
 
-func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string) (azcore.TokenCredential, error) {
+func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {
 	// 1. Client Secret
 	if secret != "" {
-		logVerbose("Authentication method: Client Secret")
-		logVerbose("Creating ClientSecretCredential...")
+		logVerbose(config.VerboseMode, "Authentication method: Client Secret")
+		logVerbose(config.VerboseMode, "Creating ClientSecretCredential...")
 		return azidentity.NewClientSecretCredential(tenantID, clientID, secret, nil)
 	}
 
 	// 2. PFX File
 	if pfxPath != "" {
-		logVerbose("Authentication method: PFX Certificate File")
-		logVerbose("PFX file path: %s", pfxPath)
+		logVerbose(config.VerboseMode, "Authentication method: PFX Certificate File")
+		logVerbose(config.VerboseMode, "PFX file path: %s", pfxPath)
 		pfxData, err := os.ReadFile(pfxPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read PFX file: %w", err)
 		}
-		logVerbose("PFX file read successfully (%d bytes)", len(pfxData))
+		logVerbose(config.VerboseMode, "PFX file read successfully (%d bytes)", len(pfxData))
 		return createCertCredential(tenantID, clientID, pfxData, pfxPass)
 	}
 
 	// 3. Windows Cert Store (Thumbprint)
 	if thumbprint != "" {
-		logVerbose("Authentication method: Windows Certificate Store")
-		logVerbose("Certificate thumbprint: %s", thumbprint)
-		logVerbose("Exporting certificate from CurrentUser\\My store...")
+		logVerbose(config.VerboseMode, "Authentication method: Windows Certificate Store")
+		logVerbose(config.VerboseMode, "Certificate thumbprint: %s", thumbprint)
+		logVerbose(config.VerboseMode, "Exporting certificate from CurrentUser\\My store...")
 		pfxData, tempPass, err := exportCertFromStore(thumbprint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export cert from store: %w", err)
 		}
-		logVerbose("Certificate exported successfully (%d bytes)", len(pfxData))
+		logVerbose(config.VerboseMode, "Certificate exported successfully (%d bytes)", len(pfxData))
 		return createCertCredential(tenantID, clientID, pfxData, tempPass)
 	}
 
-	return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint")
+	return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint)")
 }
 
 func createCertCredential(tenantID, clientID string, pfxData []byte, password string) (*azidentity.ClientCertificateCredential, error) {
@@ -364,7 +456,7 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 
 // ... Rest of the functions (listEvents, sendEmail, createInvite) ...
 
-func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int) error {
+func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int, config *Config, logger *CSVLogger) error {
 	// Configure request to get top N events
 	requestConfig := &users.ItemEventsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &users.ItemEventsRequestBuilderGetQueryParameters{
@@ -372,7 +464,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 		},
 	}
 
-	logVerbose("Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
+	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
 	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
 	if err != nil {
 		var oDataError *odataerrors.ODataError
@@ -389,13 +481,15 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	events := result.GetValue()
 	eventCount := len(events)
 
-	logVerbose("API response received: %d events", eventCount)
+	logVerbose(config.VerboseMode, "API response received: %d events", eventCount)
 	fmt.Printf("Upcoming events for %s:\n", mailbox)
 
 	if eventCount == 0 {
 		fmt.Println("No events found.")
 		// Log summary entry when no events found
-		writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("No events found (0 events)"), "N/A"})
+		if logger != nil {
+			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("No events found (0 events)"), "N/A"})
+		}
 	} else {
 		for _, event := range events {
 			subject := "N/A"
@@ -411,17 +505,21 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 			fmt.Printf("- %s (ID: %s)\n", subject, id)
 
 			// Write to CSV
-			writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
+			if logger != nil {
+				logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
+			}
 		}
 		// Log summary entry after all events
 		fmt.Printf("\nTotal events retrieved: %d\n", eventCount)
-		writeCSVRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
+		if logger != nil {
+			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
+		}
 	}
 
 	return nil
 }
 
-func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, senderMailbox string, to, cc, bcc []string, subject, textContent, htmlContent string, attachmentPaths []string) {
+func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, senderMailbox string, to, cc, bcc []string, subject, textContent, htmlContent string, attachmentPaths []string, config *Config, logger *CSVLogger) {
 	message := models.NewMessage()
 
 	// Set Subject
@@ -433,12 +531,12 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 		body.SetContent(&htmlContent)
 		contentType := models.HTML_BODYTYPE
 		body.SetContentType(&contentType)
-		logVerbose("Email body type: HTML")
+		logVerbose(config.VerboseMode, "Email body type: HTML")
 	} else {
 		body.SetContent(&textContent)
 		contentType := models.TEXT_BODYTYPE
 		body.SetContentType(&contentType)
-		logVerbose("Email body type: Text")
+		logVerbose(config.VerboseMode, "Email body type: Text")
 	}
 	message.SetBody(body)
 
@@ -455,20 +553,20 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 
 	// Add Attachments
 	if len(attachmentPaths) > 0 {
-		fileAttachments, err := createFileAttachments(attachmentPaths)
+		fileAttachments, err := createFileAttachments(attachmentPaths, config)
 		if err != nil {
 			log.Printf("Error creating attachments: %v", err)
 		} else if len(fileAttachments) > 0 {
 			message.SetAttachments(fileAttachments)
-			logVerbose("Attachments added: %d file(s)", len(fileAttachments))
+			logVerbose(config.VerboseMode, "Attachments added: %d file(s)", len(fileAttachments))
 		}
 	}
 
 	requestBody := users.NewItemSendMailPostRequestBody()
 	requestBody.SetMessage(message)
 
-	logVerbose("Calling Graph API: POST /users/%s/sendMail", senderMailbox)
-	logVerbose("Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
+	logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/sendMail", senderMailbox)
+	logVerbose(config.VerboseMode, "Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
 	err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
 
 	status := StatusSuccess
@@ -477,7 +575,7 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 		log.Printf("Error sending mail: %v", err)
 		status = fmt.Sprintf("%s: %v", StatusError, err)
 	} else {
-		logVerbose("Email sent successfully via Graph API")
+		logVerbose(config.VerboseMode, "Email sent successfully via Graph API")
 		fmt.Printf("Email sent successfully from %s.\n", senderMailbox)
 		fmt.Printf("To: %v\n", to)
 		fmt.Printf("Cc: %v\n", cc)
@@ -494,18 +592,20 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	}
 
 	// Write to CSV
-	toStr := strings.Join(to, "; ")
-	ccStr := strings.Join(cc, "; ")
-	bccStr := strings.Join(bcc, "; ")
-	bodyType := "Text"
-	if htmlContent != "" {
-		bodyType = "HTML"
+	if logger != nil {
+		toStr := strings.Join(to, "; ")
+		ccStr := strings.Join(cc, "; ")
+		bccStr := strings.Join(bcc, "; ")
+		bodyType := "Text"
+		if htmlContent != "" {
+			bodyType = "HTML"
+		}
+		logger.WriteRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject, bodyType, fmt.Sprintf("%d", attachmentCount)})
 	}
-	writeCSVRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject, bodyType, fmt.Sprintf("%d", attachmentCount)})
 }
 
 // createFileAttachments reads files and creates Graph API attachment objects
-func createFileAttachments(filePaths []string) ([]models.Attachmentable, error) {
+func createFileAttachments(filePaths []string, config *Config) ([]models.Attachmentable, error) {
 	var attachments []models.Attachmentable
 
 	for _, filePath := range filePaths {
@@ -537,7 +637,7 @@ func createFileAttachments(filePaths []string) ([]models.Attachmentable, error) 
 		// Set content as base64 encoded bytes
 		attachment.SetContentBytes(fileData)
 
-		logVerbose("Attachment: %s (%s, %d bytes)", fileName, contentType, len(fileData))
+		logVerbose(config.VerboseMode, "Attachment: %s (%s, %d bytes)", fileName, contentType, len(fileData))
 		attachments = append(attachments, attachment)
 	}
 
@@ -567,7 +667,7 @@ func createRecipients(emails []string) []models.Recipientable {
 	return recipients
 }
 
-func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox, subject, startTimeStr, endTimeStr string) {
+func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox, subject, startTimeStr, endTimeStr string, config *Config, logger *CSVLogger) {
 	event := models.NewEvent()
 	event.SetSubject(&subject)
 
@@ -612,8 +712,8 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	event.SetEnd(endDateTime)
 
 	// Create the event
-	logVerbose("Calling Graph API: POST /users/%s/events", mailbox)
-	logVerbose("Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+	logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/events", mailbox)
+	logVerbose(config.VerboseMode, "Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	createdEvent, err := client.Users().ByUserId(mailbox).Events().Post(ctx, event, nil)
 
 	status := StatusSuccess
@@ -625,8 +725,8 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 		if createdEvent.GetId() != nil {
 			eventID = *createdEvent.GetId()
 		}
-		logVerbose("Calendar event created successfully via Graph API")
-		logVerbose("Event ID: %s", eventID)
+		logVerbose(config.VerboseMode, "Calendar event created successfully via Graph API")
+		logVerbose(config.VerboseMode, "Event ID: %s", eventID)
 		fmt.Printf("Calendar invitation created in mailbox: %s\n", mailbox)
 		fmt.Printf("Subject: %s\n", subject)
 		fmt.Printf("Start: %s\n", startTime.Format("2006-01-02 15:04:05 MST"))
@@ -635,10 +735,12 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	}
 
 	// Write to CSV
-	writeCSVRow([]string{ActionSendInvite, status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
+	if logger != nil {
+		logger.WriteRow([]string{ActionSendInvite, status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
+	}
 }
 
-func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int) error {
+func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int, config *Config, logger *CSVLogger) error {
 	// Configure request to get top N messages ordered by received date
 	requestConfig := &users.ItemMessagesRequestBuilderGetRequestConfiguration{
 		QueryParameters: &users.ItemMessagesRequestBuilderGetQueryParameters{
@@ -648,7 +750,7 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 		},
 	}
 
-	logVerbose("Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
+	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
 	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
 	if err != nil {
 		return fmt.Errorf("error fetching inbox for %s: %w", mailbox, err)
@@ -657,13 +759,15 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	messages := result.GetValue()
 	messageCount := len(messages)
 
-	logVerbose("API response received: %d messages", messageCount)
+	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)
 	fmt.Printf("Newest %d messages in inbox for %s:\n\n", count, mailbox)
 
 	if messageCount == 0 {
 		fmt.Println("No messages found.")
 		// Log summary entry when no messages found
-		writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
+		if logger != nil {
+			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
+		}
 	} else {
 		for i, message := range messages {
 			// Extract sender
@@ -704,11 +808,15 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 			fmt.Printf("   Received: %s\n\n", receivedDate)
 
 			// Write to CSV
-			writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
+			if logger != nil {
+				logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
+			}
 		}
 		// Log summary entry after all messages
 		fmt.Printf("Total messages retrieved: %d\n", messageCount)
-		writeCSVRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
+		if logger != nil {
+			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
+		}
 	}
 
 	return nil
@@ -719,79 +827,9 @@ func Int32Ptr(i int32) *int32 {
 	return &i
 }
 
-// Initialize CSV log file
-func initCSVLog(action string) {
-	// Get temp directory
-	tempDir := os.TempDir()
-
-	// Create filename with current date
-	dateStr := time.Now().Format("2006-01-02")
-	fileName := fmt.Sprintf("_msgraphgolangtestingtool_%s.csv", dateStr)
-	filePath := filepath.Join(tempDir, fileName)
-
-	// Open or create file (append mode)
-	var err error
-	csvFile, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Warning: Could not create CSV log file: %v", err)
-		return
-	}
-
-	csvWriter = csv.NewWriter(csvFile)
-
-	// Check if file is new (empty) to write headers
-	fileInfo, _ := csvFile.Stat()
-	if fileInfo.Size() == 0 {
-		// Write header based on action type
-		writeCSVHeader(action)
-	}
-
-	fmt.Printf("Logging to: %s\n\n", filePath)
-}
-
-// Write CSV header based on action type
-func writeCSVHeader(action string) {
-	var header []string
-	switch action {
-	case ActionGetEvents:
-		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Event Subject", "Event ID"}
-	case ActionSendMail:
-		header = []string{"Timestamp", "Action", "Status", "Mailbox", "To", "CC", "BCC", "Subject", "Body Type", "Attachments"}
-	case ActionSendInvite:
-		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "Start Time", "End Time", "Event ID"}
-	case ActionGetInbox:
-		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "From", "To", "Received DateTime"}
-	default:
-		header = []string{"Timestamp", "Action", "Status", "Details"}
-	}
-	csvWriter.Write(header)
-	csvWriter.Flush()
-}
-
-// Close CSV log file
-func closeCSVLog() {
-	if csvWriter != nil {
-		csvWriter.Flush()
-	}
-	if csvFile != nil {
-		csvFile.Close()
-	}
-}
-
-// Write a row to CSV
-func writeCSVRow(row []string) {
-	if csvWriter != nil {
-		// Prepend timestamp
-		timestamp := time.Now().Format("2006-01-02 15:04:05")
-		fullRow := append([]string{timestamp}, row...)
-		csvWriter.Write(fullRow)
-		csvWriter.Flush()
-	}
-}
-
 // Verbose logging helper
-func logVerbose(format string, args ...interface{}) {
-	if verboseMode {
+func logVerbose(verbose bool, format string, args ...interface{}) {
+	if verbose {
 		prefix := "[VERBOSE] "
 		fmt.Printf(prefix+format+"\n", args...)
 	}
