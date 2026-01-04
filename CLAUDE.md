@@ -23,7 +23,8 @@ The tool is designed for **minimal external dependencies** — it compiles into 
  **Network:**
   * **Proxy Support:** Route traffic through HTTP/HTTPS proxies via flag or environment variable.
 * **CSV Logging:**
-  * All operations are automatically logged to `%TEMP%\_msgraphgolangtestingtool_{date}.csv`
+  * All operations are automatically logged to `%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`
+  * Each action type creates its own log file (e.g., `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`)
   * Includes timestamps and action-specific details
   * Output shown on screen and written to CSV simultaneously
 
@@ -207,7 +208,7 @@ This is a portable, single-binary Go CLI tool for interacting with Microsoft Gra
 
 ### CSV Logging
 
-All operations are automatically logged to a CSV file in the Windows temp directory (`%TEMP%\_msgraphgolangtestingtool_{date}.csv`). The log includes timestamps and action-specific data. Output is shown on screen and written to the CSV file simultaneously.
+All operations are automatically logged to action-specific CSV files in the Windows temp directory (`%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`). Each action type creates its own log file with a consistent schema (e.g., `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`). The log includes timestamps and action-specific data. Output is shown on screen and written to the CSV file simultaneously.
 
 ## Build and Run Commands
 
@@ -332,8 +333,9 @@ Currently supports TEXT-only email bodies (src/msgraphgolangtestingtool.go:245).
 
 The tool implements automatic CSV logging (src/msgraphgolangtestingtool.go:357-425):
 
-* Creates a daily CSV file in `%TEMP%` directory with format `_msgraphgolangtestingtool_YYYY-MM-DD.csv`
-* File is opened in append mode (multiple runs on the same day append to the same file)
+* Creates action-specific CSV files in `%TEMP%` directory with format `_msgraphgolangtestingtool_{action}_YYYY-MM-DD.csv`
+* Each action type gets its own log file to prevent schema conflicts (e.g., `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`)
+* File is opened in append mode (multiple runs of the same action on the same day append to the same file)
 * Headers are written only when creating a new file
 * Each action has a custom CSV schema (Status is always the 3rd column for consistency):
   * `getevents`: Timestamp, Action, Status, Mailbox, Event Subject, Event ID
