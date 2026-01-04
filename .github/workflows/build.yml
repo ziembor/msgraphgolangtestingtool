@@ -18,9 +18,11 @@ jobs:
           - os: windows-latest
             binary_name: msgraphgolangtestingtool.exe
             artifact_name: msgraphgolangtestingtool-windows
+            zip_name: msgraphgolangtestingtool-windows.zip
           - os: ubuntu-latest
             binary_name: msgraphgolangtestingtool
             artifact_name: msgraphgolangtestingtool-linux
+            zip_name: msgraphgolangtestingtool-linux.zip
 
     steps:
     - uses: actions/checkout@v4
@@ -62,24 +64,46 @@ jobs:
           exit 1
         fi
 
+    - name: Create ZIP archive (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Compress-Archive -Path ${{ matrix.binary_name }} -DestinationPath ${{ matrix.zip_name }}
+        Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
+        Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
+
+    - name: Create ZIP archive (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }}
+        echo "Created ZIP archive: ${{ matrix.zip_name }}"
+        ls -lh ${{ matrix.zip_name }}
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.binary_name }}
+        path: ${{ matrix.zip_name }}
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: ${{ matrix.binary_name }}
+        files: ${{ matrix.zip_name }}
         body: |
           ## Microsoft Graph GoLang Testing Tool
 
           Portable CLI tool for Microsoft Graph API operations.
 
           ### Installation
-          **Windows:** Download `msgraphgolangtestingtool.exe` and run directly.
-          **Linux:** Download `msgraphgolangtestingtool`, make it executable (`chmod +x msgraphgolangtestingtool`), and run.
+          **Windows:**
+          1. Download `msgraphgolangtestingtool-windows.zip`
+          2. Extract the ZIP file
+          3. Run `msgraphgolangtestingtool.exe` directly
+
+          **Linux:**
+          1. Download `msgraphgolangtestingtool-linux.zip`
+          2. Extract the ZIP file: `unzip msgraphgolangtestingtool-linux.zip`
+          3. Make it executable: `chmod +x msgraphgolangtestingtool`
+          4. Run: `./msgraphgolangtestingtool`
 
           ### Usage
           **Windows:**

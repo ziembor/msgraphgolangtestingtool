@@ -45,7 +45,7 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
-	"golang.org/x/crypto/pkcs12"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 //go:embed VERSION
@@ -101,7 +101,9 @@ type Config struct {
 	EndTime       string // End time in RFC3339 format
 
 	// Network configuration
-	ProxyURL string // HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+	ProxyURL    string        // HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+	MaxRetries  int           // Maximum retry attempts for transient failures (default: 3)
+	RetryDelay  time.Duration // Base delay between retries in milliseconds (default: 2000ms)
 
 	// Runtime configuration
 	VerboseMode bool // Enable verbose diagnostic output
@@ -120,6 +122,8 @@ func NewConfig() *Config {
 		Count:         3,
 		VerboseMode:   false,
 		ShowVersion:   false,
+		MaxRetries:    3,                        // Default: 3 retry attempts
+		RetryDelay:    2000 * time.Millisecond,  // Default: 2 second base delay
 	}
 }
 
@@ -374,41 +378,45 @@ func parseAndConfigureFlags() *Config {
 
 	// Define Command Line Parameters
 	showVersion := flag.Bool("version", false, "Show version information")
-	tenantID := flag.String("tenantid", "", "The Azure Tenant ID")
-	clientID := flag.String("clientid", "", "The Application (Client) ID")
-	secret := flag.String("secret", "", "The Client Secret")
-	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file")
-	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file")
-	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store")
-	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address")
+	tenantID := flag.String("tenantid", "", "The Azure Tenant ID (env: MSGRAPHTENANTID)")
+	clientID := flag.String("clientid", "", "The Application (Client) ID (env: MSGRAPHCLIENTID)")
+	secret := flag.String("secret", "", "The Client Secret (env: MSGRAPHSECRET)")
+	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file (env: MSGRAPHPFX)")
+	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file (env: MSGRAPHPFXPASS)")
+	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store (env: MSGRAPHTHUMBPRINT)")
+	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address (env: MSGRAPHMAILBOX)")
 
 	// Recipient flags (using custom stringSlice type)
 	var to, cc, bcc, attachmentFiles stringSlice
-	flag.Var(&to, "to", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty)")
-	flag.Var(&cc, "cc", "Comma-separated list of CC recipients")
-	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients")
+	flag.Var(&to, "to", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty) (env: MSGRAPHTO)")
+	flag.Var(&cc, "cc", "Comma-separated list of CC recipients (env: MSGRAPHCC)")
+	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients (env: MSGRAPHBCC)")
 
 	// Email content flags
-	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email")
-	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text)")
-	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided)")
-	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach")
+	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email (env: MSGRAPHSUBJECT)")
+	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text) (env: MSGRAPHBODY)")
+	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided) (env: MSGRAPHBODYHTML)")
+	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach (env: MSGRAPHATTACHMENTS)")
 
 	// Calendar invite flags
-	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite")
-	startTime := flag.String("start", "", "Start time for calendar invite (RFC3339 format, e.g., 2026-01-15T14:00:00Z). Defaults to now if empty")
-	endTime := flag.String("end", "", "End time for calendar invite (RFC3339 format, e.g., 2026-01-15T15:00:00Z). Defaults to 1 hour after start if empty")
+	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite (env: MSGRAPHINVITESUBJECT)")
+	startTime := flag.String("start", "", "Start time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T14:00:00Z', '2026-01-15T14:00:00'. Defaults to now if empty (env: MSGRAPHSTART)")
+	endTime := flag.String("end", "", "End time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T15:00:00Z', '2026-01-15T15:00:00'. Defaults to 1 hour after start if empty (env: MSGRAPHEND)")
 
 	// Proxy configuration
-	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)")
+	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080) (env: MSGRAPHPROXY)")
+
+	// Retry configuration
+	maxRetries := flag.Int("maxretries", 3, "Maximum retry attempts for transient failures (default: 3) (env: MSGRAPHMAXRETRIES)")
+	retryDelay := flag.Int("retrydelay", 2000, "Base delay between retries in milliseconds (default: 2000ms) (env: MSGRAPHRETRYDELAY)")
 
 	// Verbose mode
 	verbose := flag.Bool("verbose", false, "Enable verbose output (shows configuration, tokens, API details)")
 
 	// Count for getevents and getinbox
-	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3)")
+	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
 
-	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
+	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox (env: MSGRAPHACTION)")
 	flag.Parse()
 
 	// Apply environment variables if flags not set via command line
@@ -451,6 +459,36 @@ func parseAndConfigureFlags() *Config {
 		}
 	}
 
+	// Apply MSGRAPHMAXRETRIES environment variable if flag wasn't provided
+	maxRetriesFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "maxretries" {
+			maxRetriesFlagProvided = true
+		}
+	})
+	if !maxRetriesFlagProvided {
+		if envMaxRetries := os.Getenv("MSGRAPHMAXRETRIES"); envMaxRetries != "" {
+			if parsedMaxRetries, err := strconv.Atoi(envMaxRetries); err == nil && parsedMaxRetries >= 0 {
+				*maxRetries = parsedMaxRetries
+			}
+		}
+	}
+
+	// Apply MSGRAPHRETRYDELAY environment variable if flag wasn't provided
+	retryDelayFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "retrydelay" {
+			retryDelayFlagProvided = true
+		}
+	})
+	if !retryDelayFlagProvided {
+		if envRetryDelay := os.Getenv("MSGRAPHRETRYDELAY"); envRetryDelay != "" {
+			if parsedRetryDelay, err := strconv.Atoi(envRetryDelay); err == nil && parsedRetryDelay > 0 {
+				*retryDelay = parsedRetryDelay
+			}
+		}
+	}
+
 	// Create and populate Config struct with all parsed values
 	config := &Config{
 		ShowVersion:     *showVersion,
@@ -473,6 +511,8 @@ func parseAndConfigureFlags() *Config {
 		StartTime:       *startTime,
 		EndTime:         *endTime,
 		ProxyURL:        *proxyURL,
+		MaxRetries:      *maxRetries,
+		RetryDelay:      time.Duration(*retryDelay) * time.Millisecond,
 		VerboseMode:     *verbose,
 		Count:           *count,
 	}
@@ -552,15 +592,45 @@ func validateGUID(guid, fieldName string) error {
 	return nil
 }
 
-// validateRFC3339Time validates that a string matches RFC3339 timestamp format.
+// parseFlexibleTime parses a time string accepting multiple formats:
+//   - RFC3339 with timezone: "2026-01-15T14:00:00Z" or "2026-01-15T14:00:00+01:00"
+//   - PowerShell sortable format: "2026-01-15T14:00:00" (assumes UTC if no timezone)
+//
+// Returns the parsed time and any error encountered.
+func parseFlexibleTime(timeStr string) (time.Time, error) {
+	if timeStr == "" {
+		return time.Time{}, fmt.Errorf("time string is empty")
+	}
+
+	// Try RFC3339 first (with timezone)
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err == nil {
+		return t, nil
+	}
+
+	// Try PowerShell sortable format (without timezone) - assume UTC
+	// Format: "2006-01-02T15:04:05"
+	t, err = time.Parse("2006-01-02T15:04:05", timeStr)
+	if err == nil {
+		// Convert to UTC explicitly
+		return t.UTC(), nil
+	}
+
+	// Neither format worked
+	return time.Time{}, fmt.Errorf("invalid time format (expected RFC3339 like '2026-01-15T14:00:00Z' or PowerShell sortable like '2026-01-15T14:00:00')")
+}
+
+// validateRFC3339Time validates that a string matches RFC3339 or PowerShell sortable timestamp format.
 // This is used for calendar invite start and end times.
 //
-// Example valid RFC3339: "2026-01-15T14:00:00Z" or "2026-01-15T14:00:00+01:00"
+// Supported formats:
+//   - RFC3339 with timezone: "2026-01-15T14:00:00Z" or "2026-01-15T14:00:00+01:00"
+//   - PowerShell sortable (Get-Date -Format s): "2026-01-15T14:00:00" (assumes UTC)
 //
 // Empty strings are allowed and return nil (defaults will be used).
 //
 // Parameters:
-//   - timeStr: the RFC3339 timestamp string to validate
+//   - timeStr: the timestamp string to validate
 //   - fieldName: descriptive name for error messages (e.g., "Start time")
 //
 // Returns an error if the time format is invalid, nil if valid or empty.
@@ -568,9 +638,9 @@ func validateRFC3339Time(timeStr, fieldName string) error {
 	if timeStr == "" {
 		return nil // Empty is allowed (defaults are used)
 	}
-	_, err := time.Parse(time.RFC3339, timeStr)
+	_, err := parseFlexibleTime(timeStr)
 	if err != nil {
-		return fmt.Errorf("%s is not in valid RFC3339 format (e.g., 2026-01-15T14:00:00Z): %w", fieldName, err)
+		return fmt.Errorf("%s: %w", fieldName, err)
 	}
 	return nil
 }
@@ -717,6 +787,107 @@ func setupGraphClient(ctx context.Context, config *Config) (*msgraphsdk.GraphSer
 	return client, nil
 }
 
+// isRetryableError determines if an error is transient and worth retrying.
+// Returns true for network timeouts, Graph API throttling (429), and service
+// unavailability (503) errors.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for context cancellation - never retry these
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	// Note: ODataError wraps the underlying ResponseError, so we rely on
+	// the azcore.ResponseError check below for status codes
+
+	// Check for Azure SDK response errors
+	var respErr *azcore.ResponseError
+	if errors.As(err, &respErr) {
+		if respErr.StatusCode == 429 || respErr.StatusCode == 503 || respErr.StatusCode == 504 {
+			return true
+		}
+	}
+
+	// Check error message for common transient patterns
+	errMsg := strings.ToLower(err.Error())
+	transientPatterns := []string{
+		"timeout",
+		"connection reset",
+		"connection refused",
+		"temporary failure",
+		"try again",
+		"i/o timeout",
+		"no such host",
+		"network is unreachable",
+	}
+
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errMsg, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// retryWithBackoff wraps an operation with exponential backoff retry logic.
+// It attempts the operation up to maxRetries times, waiting with exponential
+// backoff between attempts. Only retries errors identified by isRetryableError.
+//
+// The backoff delay follows the pattern: baseDelay * (2^attempt), capped at 30 seconds.
+// For example, with baseDelay=2s: 2s, 4s, 8s, 16s, 30s, 30s...
+//
+// Returns the last error encountered if all retries are exhausted, or nil on success.
+func retryWithBackoff(ctx context.Context, maxRetries int, baseDelay time.Duration, operation func() error) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Execute the operation
+		lastErr = operation()
+
+		// Success - return immediately
+		if lastErr == nil {
+			if attempt > 0 {
+				log.Printf("Operation succeeded after %d retries", attempt)
+			}
+			return nil
+		}
+
+		// Check if error is retryable
+		if !isRetryableError(lastErr) {
+			// Non-retryable error - fail immediately
+			return lastErr
+		}
+
+		// Last attempt failed - return error
+		if attempt == maxRetries {
+			return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+		}
+
+		// Calculate exponential backoff delay (cap at 30 seconds)
+		delay := baseDelay * time.Duration(1<<uint(attempt))
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+
+		log.Printf("Retryable error encountered (attempt %d/%d): %v. Retrying in %v...",
+			attempt+1, maxRetries, lastErr, delay)
+
+		// Wait with context cancellation support
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("retry cancelled: %w", ctx.Err())
+		case <-time.After(delay):
+			// Continue to next retry attempt
+		}
+	}
+
+	return lastErr
+}
+
 // executeAction dispatches to the appropriate action handler based on config.Action.
 // Supported actions are: getevents, sendmail, sendinvite, and getinbox.
 //
@@ -836,12 +1007,10 @@ func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint stri
 }
 
 func createCertCredential(tenantID, clientID string, pfxData []byte, password string) (*azidentity.ClientCertificateCredential, error) {
-	// Decode PFX using pkcs12
-	// pkcs12.Decode returns the first private key and certificate.
-	key, cert, err := pkcs12.Decode(pfxData, password)
+	// Decode PFX using go-pkcs12 library (supports SHA-256 and other modern algorithms)
+	// pkcs12.DecodeChain returns private key and full certificate chain
+	key, cert, caCerts, err := pkcs12.DecodeChain(pfxData, password)
 	if err != nil {
-		// Fallback: Sometimes pkcs12.Decode fails if the PFX has complex structure.
-		// We could try ToPEM logic here if needed, but Decode is usually sufficient for standard exports.
 		return nil, fmt.Errorf("failed to decode PFX: %w", err)
 	}
 
@@ -851,15 +1020,19 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 		return nil, fmt.Errorf("decoded key is not a valid crypto.PrivateKey")
 	}
 
-	// Options
+	// Build certificate chain: primary cert + CA certs
+	// azidentity expects a slice of certs with the leaf certificate first
+	certs := []*x509.Certificate{cert}
+	if len(caCerts) > 0 {
+		certs = append(certs, caCerts...)
+	}
+
+	// Options - send full certificate chain for better compatibility
 	opts := &azidentity.ClientCertificateCredentialOptions{
 		SendCertificateChain: true,
 	}
 
 	// Create Credential
-	// azidentity expects a slice of certs.
-	certs := []*x509.Certificate{cert}
-
 	return azidentity.NewClientCertificateCredential(tenantID, clientID, certs, privKey, opts)
 }
 
@@ -874,7 +1047,17 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Eventable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		var oDataError *odataerrors.ODataError
 		if errors.As(err, &oDataError) {
@@ -887,7 +1070,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 		return fmt.Errorf("error fetching calendar for %s: %w", mailbox, err)
 	}
 
-	events := result.GetValue()
+	events := getValueFunc()
 	eventCount := len(events)
 
 	logVerbose(config.VerboseMode, "API response received: %d events", eventCount)
@@ -1086,7 +1269,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if startTimeStr == "" {
 		startTime = time.Now()
 	} else {
-		startTime, err = time.Parse(time.RFC3339, startTimeStr)
+		startTime, err = parseFlexibleTime(startTimeStr)
 		if err != nil {
 			log.Printf("Error parsing start time: %v. Using current time instead.", err)
 			startTime = time.Now()
@@ -1098,7 +1281,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if endTimeStr == "" {
 		endTime = startTime.Add(1 * time.Hour)
 	} else {
-		endTime, err = time.Parse(time.RFC3339, endTimeStr)
+		endTime, err = parseFlexibleTime(endTimeStr)
 		if err != nil {
 			log.Printf("Error parsing end time: %v. Using start + 1 hour instead.", err)
 			endTime = startTime.Add(1 * time.Hour)
@@ -1160,12 +1343,22 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Messageable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		return fmt.Errorf("error fetching inbox for %s: %w", mailbox, err)
 	}
 
-	messages := result.GetValue()
+	messages := getValueFunc()
 	messageCount := len(messages)
 
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)

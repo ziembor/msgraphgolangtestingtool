@@ -25,7 +25,15 @@
       "Bash(./integration_test_tool.exe:*)",
       "Bash(GOOS=linux GOARCH=amd64 go build:*)",
       "Bash(git tag:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(go list:*)",
+      "Bash(go get:*)",
+      "Bash(dir:*)",
+      "Bash(.msgraphgolangtestingtool.exe -help)",
+      "Bash(wc:*)",
+      "Bash(go vet:*)",
+      "Bash(go doc:*)",
+      "Bash(go run:*)"
     ]
   },
   "outputStyle": "Learning"
