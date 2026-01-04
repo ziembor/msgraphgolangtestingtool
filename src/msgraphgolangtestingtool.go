@@ -54,6 +54,43 @@ type Config struct {
 	VerboseMode bool
 }
 
+// Flags holds all command-line flag values and parsed configuration
+type Flags struct {
+	// Core flags
+	ShowVersion bool
+	TenantID    string
+	ClientID    string
+	Mailbox     string
+	Action      string
+
+	// Authentication flags
+	Secret      string
+	PfxPath     string
+	PfxPass     string
+	Thumbprint  string
+
+	// Email recipients (using stringSlice type)
+	To              stringSlice
+	Cc              stringSlice
+	Bcc             stringSlice
+	AttachmentFiles stringSlice
+
+	// Email content flags
+	Subject  string
+	Body     string
+	BodyHTML string
+
+	// Calendar invite flags
+	InviteSubject string
+	StartTime     string
+	EndTime       string
+
+	// Network and other flags
+	ProxyURL string
+	Verbose  bool
+	Count    int
+}
+
 // CSVLogger handles CSV logging operations
 type CSVLogger struct {
 	writer *csv.Writer
@@ -238,10 +275,10 @@ func main() {
 	}
 }
 
-func run() error {
-	// Setup signal handling for graceful shutdown
+// setupSignalHandling configures graceful shutdown on interrupt signals
+// Returns a cancellable context for use throughout the application
+func setupSignalHandling() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Handle interrupt signals (Ctrl+C, SIGTERM)
 	sigChan := make(chan os.Signal, 1)
@@ -253,15 +290,19 @@ func run() error {
 		cancel()
 	}()
 
-	// 1. Define Command Line Parameters
+	return ctx, cancel
+}
 
+// parseAndConfigureFlags defines all command-line flags, parses them,
+// applies environment variables, and returns populated Flags and Config structs
+func parseAndConfigureFlags() (*Flags, *Config) {
+	// Define Command Line Parameters
 	showVersion := flag.Bool("version", false, "Show version information")
 	tenantID := flag.String("tenantid", "", "The Azure Tenant ID")
 	clientID := flag.String("clientid", "", "The Application (Client) ID")
 	secret := flag.String("secret", "", "The Client Secret")
 	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file")
 	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file")
-	// Double backslash for string literal, needs to be careful.
 	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store")
 	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address")
 
@@ -293,17 +334,6 @@ func run() error {
 
 	action := flag.String("action", "getevents", "Action to perform: getevents, sendmail, sendinvite, getinbox")
 	flag.Parse()
-
-	// Create configuration
-	config := &Config{
-		VerboseMode: *verbose,
-	}
-
-	// Check version flag
-	if *showVersion {
-		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
-		return nil
-	}
 
 	// Apply environment variables if flags not set via command line
 	applyEnvVars(map[string]*string{
@@ -345,40 +375,107 @@ func run() error {
 		}
 	}
 
+	// Create and populate Flags struct
+	flags := &Flags{
+		ShowVersion:     *showVersion,
+		TenantID:        *tenantID,
+		ClientID:        *clientID,
+		Mailbox:         *mailbox,
+		Action:          *action,
+		Secret:          *secret,
+		PfxPath:         *pfxPath,
+		PfxPass:         *pfxPass,
+		Thumbprint:      *thumbprint,
+		To:              to,
+		Cc:              cc,
+		Bcc:             bcc,
+		AttachmentFiles: attachmentFiles,
+		Subject:         *subject,
+		Body:            *body,
+		BodyHTML:        *bodyHTML,
+		InviteSubject:   *inviteSubject,
+		StartTime:       *startTime,
+		EndTime:         *endTime,
+		ProxyURL:        *proxyURL,
+		Verbose:         *verbose,
+		Count:           *count,
+	}
+
+	// Create Config struct
+	config := &Config{
+		VerboseMode: *verbose,
+	}
+
 	// Print verbose configuration if enabled
 	if config.VerboseMode {
 		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime)
 	}
 
-	// Validation
-	if *tenantID == "" || *clientID == "" || *mailbox == "" {
-		fmt.Println("Error: Missing required parameters (tenantid, clientid, mailbox).")
-		flag.Usage()
-		os.Exit(1)
+	return flags, config
+}
+
+// validateConfiguration checks that required configuration parameters are valid
+func validateConfiguration(flags *Flags) error {
+	// Check required fields
+	if flags.TenantID == "" {
+		return fmt.Errorf("missing required parameter: tenantid")
+	}
+	if flags.ClientID == "" {
+		return fmt.Errorf("missing required parameter: clientid")
+	}
+	if flags.Mailbox == "" {
+		return fmt.Errorf("missing required parameter: mailbox")
 	}
 
+	// Check that at least one authentication method is provided
+	authMethodCount := 0
+	if flags.Secret != "" {
+		authMethodCount++
+	}
+	if flags.PfxPath != "" {
+		authMethodCount++
+	}
+	if flags.Thumbprint != "" {
+		authMethodCount++
+	}
+
+	if authMethodCount == 0 {
+		return fmt.Errorf("missing authentication: must provide one of -secret, -pfx, or -thumbprint")
+	}
+	if authMethodCount > 1 {
+		return fmt.Errorf("multiple authentication methods provided: use only one of -secret, -pfx, or -thumbprint")
+	}
+
+	return nil
+}
+
+// initializeServices sets up CSV logging and proxy configuration
+// Returns the CSV logger (or nil if initialization failed)
+func initializeServices(flags *Flags) (*CSVLogger, error) {
 	// Initialize CSV logging
-	logger, err := NewCSVLogger(*action)
+	logger, err := NewCSVLogger(flags.Action)
 	if err != nil {
 		log.Printf("Warning: Could not initialize CSV logging: %v", err)
 		logger = nil // Continue without logging
 	}
-	if logger != nil {
-		defer logger.Close()
-	}
 
 	// Configure proxy if specified
 	// Go's http package automatically uses HTTP_PROXY/HTTPS_PROXY environment variables
-	if *proxyURL != "" {
-		os.Setenv("HTTP_PROXY", *proxyURL)
-		os.Setenv("HTTPS_PROXY", *proxyURL)
-		fmt.Printf("Using proxy: %s\n", *proxyURL)
+	if flags.ProxyURL != "" {
+		os.Setenv("HTTP_PROXY", flags.ProxyURL)
+		os.Setenv("HTTPS_PROXY", flags.ProxyURL)
+		fmt.Printf("Using proxy: %s\n", flags.ProxyURL)
 	}
 
-	// 2. Setup Authentication
-	cred, err := getCredential(*tenantID, *clientID, *secret, *pfxPath, *pfxPass, *thumbprint, config)
+	return logger, nil
+}
+
+// setupGraphClient creates credentials and initializes the Microsoft Graph SDK client
+func setupGraphClient(ctx context.Context, flags *Flags, config *Config) (*msgraphsdk.GraphServiceClient, error) {
+	// Setup Authentication
+	cred, err := getCredential(flags.TenantID, flags.ClientID, flags.Secret, flags.PfxPath, flags.PfxPass, flags.Thumbprint, config)
 	if err != nil {
-		return fmt.Errorf("authentication setup failed: %w", err)
+		return nil, fmt.Errorf("authentication setup failed: %w", err)
 	}
 
 	// Get and display token information if verbose
@@ -396,7 +493,7 @@ func run() error {
 	// Scopes for Application Permissions usually are https://graph.microsoft.com/.default
 	client, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{"https://graph.microsoft.com/.default"})
 	if err != nil {
-		return fmt.Errorf("graph client initialization failed: %w", err)
+		return nil, fmt.Errorf("graph client initialization failed: %w", err)
 	}
 
 	if config.VerboseMode {
@@ -404,30 +501,74 @@ func run() error {
 		logVerbose(config.VerboseMode, "Target scope: https://graph.microsoft.com/.default")
 	}
 
-	// 3. Execute Actions based on flags
-	switch *action {
+	return client, nil
+}
+
+// executeAction dispatches to the appropriate action handler based on flags.Action
+func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, flags *Flags, config *Config, logger *CSVLogger) error {
+	switch flags.Action {
 	case ActionGetEvents:
-		if err := listEvents(ctx, client, *mailbox, *count, config, logger); err != nil {
+		if err := listEvents(ctx, client, flags.Mailbox, flags.Count, config, logger); err != nil {
 			return fmt.Errorf("failed to list events: %w", err)
 		}
 	case ActionSendMail:
 		// If no recipients specified at all, default 'to' to the sender mailbox
-		if len(to) == 0 && len(cc) == 0 && len(bcc) == 0 {
-			to = []string{*mailbox}
+		if len(flags.To) == 0 && len(flags.Cc) == 0 && len(flags.Bcc) == 0 {
+			flags.To = []string{flags.Mailbox}
 		}
 
-		sendEmail(ctx, client, *mailbox, to, cc, bcc, *subject, *body, *bodyHTML, attachmentFiles, config, logger)
+		sendEmail(ctx, client, flags.Mailbox, flags.To, flags.Cc, flags.Bcc, flags.Subject, flags.Body, flags.BodyHTML, flags.AttachmentFiles, config, logger)
 	case ActionSendInvite:
-		createInvite(ctx, client, *mailbox, *inviteSubject, *startTime, *endTime, config, logger)
+		createInvite(ctx, client, flags.Mailbox, flags.InviteSubject, flags.StartTime, flags.EndTime, config, logger)
 	case ActionGetInbox:
-		if err := listInbox(ctx, client, *mailbox, *count, config, logger); err != nil {
+		if err := listInbox(ctx, client, flags.Mailbox, flags.Count, config, logger); err != nil {
 			return fmt.Errorf("failed to list inbox: %w", err)
 		}
 	default:
-		return fmt.Errorf("unknown action: %s", *action)
+		return fmt.Errorf("unknown action: %s", flags.Action)
 	}
 
 	return nil
+}
+
+func run() error {
+	// 1. Setup signal handling for graceful shutdown
+	ctx, cancel := setupSignalHandling()
+	defer cancel()
+
+	// 2. Parse command-line flags and apply environment variables
+	flags, config := parseAndConfigureFlags()
+
+	// 3. Handle version flag early exit
+	if flags.ShowVersion {
+		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
+		return nil
+	}
+
+	// 4. Validate configuration
+	if err := validateConfiguration(flags); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// 5. Initialize services (CSV logging and proxy)
+	logger, err := initializeServices(flags)
+	if err != nil {
+		// Error already logged in initializeServices, continue without logger
+	}
+	if logger != nil {
+		defer logger.Close()
+	}
+
+	// 6. Setup Microsoft Graph client
+	client, err := setupGraphClient(ctx, flags, config)
+	if err != nil {
+		return err
+	}
+
+	// 7. Execute the requested action
+	return executeAction(ctx, client, flags, config, logger)
 }
 
 func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {

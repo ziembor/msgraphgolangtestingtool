@@ -1,334 +1,92 @@
 # Code Review & Improvement Suggestions
 
-**Version:** 1.12.6
-**Review Date:** 2026-01-03
+**Version:** 1.14.14
+**Review Date:** 2026-01-04
 **Reviewer:** AI Code Analysis
 
 ## Executive Summary
 
-This code review identifies opportunities for improvement in security, reliability, code quality, and maintainability. Issues are prioritized as **Critical**, **High**, **Medium**, or **Low**.
+This code review identifies opportunities for improvement in code quality, testing, and maintainability. **All Critical, High, Medium, and Low priority issues have been completed.** The remaining items focus on optional enhancements for code quality, testing, and documentation.
 
 ---
 
-## 1. High Priority Issues
+## Completed Improvements
 
-### 1.1 CSV Schema Conflict
+### ✅ High Priority (All Complete)
 
-**Location:** `msgraphgolangtestingtool.go:571-617`
+**1.1 CSV Schema Conflict** (v1.14.4)
+- Fixed incompatible CSV schemas when multiple action types run on the same day
+- Each action type now creates its own log file: `_msgraphgolangtestingtool_{action}_{date}.csv`
+- Prevents data corruption and column misalignment
 
-**Issue:**
-Multiple actions write to the same CSV file on the same day with different schemas. If a user runs `getevents` then `sendmail`, the CSV becomes corrupted with mismatched columns.
+**1.2 Missing Parenthesis in Error Message** (v1.14.4)
+- Fixed typo in authentication error message (src/msgraphgolangtestingtool.go:466)
+- Added missing closing parenthesis
 
-**Example Problem:**
-```
-Timestamp,Action,Status,Mailbox,Event Subject,Event ID
-2026-01-03 10:00:00,getevents,Success,user@example.com,Team Meeting,abc123
-2026-01-03 10:05:00,sendmail,Success,user@example.com,recipient@example.com,,,Email Subject
-```
-Column 5 means "Event Subject" in row 2 but "To" in row 3.
+**1.3 Global Variables Reduce Testability** (v1.14.6)
+- Removed global variables (`csvWriter`, `csvFile`, `verboseMode`)
+- Created `Config` struct to hold application configuration
+- Created `CSVLogger` struct with methods for CSV logging operations
+- Converted to dependency injection pattern
 
-**Recommendation Option 1:** Action-specific filenames
-```go
-fileName := fmt.Sprintf("_msgraphgolangtestingtool_%s_%s.csv", action, dateStr)
-```
+### ✅ Medium Priority (All Complete)
 
-**Recommendation Option 2:** Generic schema with JSON details
-```go
-header := []string{"Timestamp", "Action", "Status", "Mailbox", "Details"}
-// Write details as JSON:
-details := map[string]interface{}{
-    "to": to,
-    "cc": cc,
-    "subject": subject,
-}
-detailsJSON, _ := json.Marshal(details)
-writeCSVRow([]string{"sendmail", "Success", mailbox, string(detailsJSON)})
-```
+**2.1 No Signal Handling (Graceful Shutdown)** (v1.14.8)
+- Added signal handling for Ctrl+C (SIGINT) and SIGTERM interrupts
+- Implemented context cancellation for graceful shutdown
+- All API operations can now be cancelled mid-execution
+- CSV logger properly closes on interrupt
 
-**Priority:** High
-**Impact:** Data corruption, unusable logs
+**2.2 Redundant Condition Check** (v1.14.7)
+- Removed duplicate `if pfxPath != ""` check in `printVerboseConfig()` function
+- Improved code clarity
 
----
+**2.3 Environment Variable Iteration Not Deterministic** (v1.14.9)
+- Sorted environment variable keys alphabetically before display in verbose output
+- Ensures consistent output order across multiple runs
+- Added key sorting with `sort.Strings(keys)`
 
-### 1.2 Missing Parenthesis in Error Message
+### ✅ Low Priority (All Complete)
 
-**Location:** `msgraphgolangtestingtool.go:276`
+**3.1 Inconsistent Error Handling** (Verified in v1.14.6)
+- Verified that `file.Stat()` error is properly handled
+- Error is logged with warning message instead of being ignored
+- Location: src/msgraphgolangtestingtool.go:87-89
 
-**Issue:**
-Typo in error message - missing closing parenthesis.
+**3.2 Manual Flag Parsing for Lists** (v1.14.10)
+- Created `stringSlice` type implementing `flag.Value` interface
+- Replaced manual `parseList()` calls with idiomatic Go flag parsing
+- Flags `-to`, `-cc`, `-bcc`, and `-attachments` now use custom type
 
-**Current Code:**
-```go
-return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint")
-```
-
-**Fix:**
-```go
-return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint)")
-```
-
-**Priority:** High
-**Impact:** User confusion, unprofessional appearance
+**3.3 Improve Verbose Token Display** (v1.14.10)
+- Always truncate tokens for security, even if length < 40 characters
+- Short tokens now show maximum 10 characters followed by "..."
+- Prevents accidental exposure of short test tokens
+- Location: src/msgraphgolangtestingtool.go:994-1006
 
 ---
 
-### 1.3 Global Variables Reduce Testability
+## 4. Code Quality Improvements (Optional Enhancements)
 
-**Location:** `msgraphgolangtestingtool.go:29-31`
+### 4.1 Refactor Large `run()` Function
 
-**Issue:**
-Global mutable variables make the code harder to test and reason about.
+**Location:** `msgraphgolangtestingtool.go:241-431`
 
-**Current Code:**
-```go
-var csvWriter *csv.Writer
-var csvFile *os.File
-var verboseMode bool
-```
-
-**Recommendation:**
-```go
-type Config struct {
-    TenantID      string
-    ClientID      string
-    Mailbox       string
-    Action        string
-    VerboseMode   bool
-    // ... other fields
-}
-
-type CSVLogger struct {
-    writer *csv.Writer
-    file   *os.File
-}
-
-func (c *CSVLogger) WriteRow(row []string) error {
-    // ...
-}
-
-func (c *CSVLogger) Close() error {
-    // ...
-}
-```
-
-**Priority:** High
-**Impact:** Code maintainability, testability
-
----
-
-## 2. Medium Priority Issues
-
-### 2.1 No Signal Handling (Graceful Shutdown)
-
-**Location:** `msgraphgolangtestingtool.go:202`
+**Current State:** The `run()` function handles signal setup, flag parsing, environment variables, validation, initialization, authentication, and action dispatch (~190 lines).
 
 **Issue:**
-The tool doesn't handle OS signals (Ctrl+C). This means in-progress network requests can't be cancelled gracefully.
+The function violates the Single Responsibility Principle and is difficult to test in isolation.
 
-**Recommendation:**
+**Recommendation:** Extract into smaller, focused functions:
+
 ```go
-func main() {
-    ctx, cancel := context.WithCancel(context.Background())
+func run() error {
+    // Setup signal handling
+    ctx, cancel := setupSignalHandling()
     defer cancel()
 
-    // Handle interrupt signals
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-    go func() {
-        <-sigChan
-        fmt.Println("\nReceived interrupt signal. Shutting down...")
-        cancel()
-    }()
-
-    // Use ctx for all API calls
-    listEvents(ctx, client, *mailbox)
-}
-```
-
-**Priority:** Medium
-**Impact:** Poor user experience on interruption
-
----
-
-### 2.2 Redundant Condition Check
-
-**Location:** `msgraphgolangtestingtool.go:691`
-
-**Issue:**
-Checking `if pfxPath != ""` twice is redundant.
-
-**Current Code:**
-```go
-} else if pfxPath != "" {
-    fmt.Println("  Method: PFX Certificate")
-    fmt.Printf("  PFX Path: %s\n", pfxPath)
-    if pfxPath != "" {  // ❌ Already checked above
-        fmt.Println("  PFX Password: ******** (provided)")
-    }
-}
-```
-
-**Fix:**
-```go
-} else if pfxPath != "" {
-    fmt.Println("  Method: PFX Certificate")
-    fmt.Printf("  PFX Path: %s\n", pfxPath)
-    fmt.Println("  PFX Password: ******** (provided)")
-}
-```
-
-**Priority:** Medium
-**Impact:** Code clarity
-
----
-
-### 2.3 Environment Variable Iteration Not Deterministic
-
-**Location:** `msgraphgolangtestingtool.go:662-669`
-
-**Issue:**
-Iterating over a map produces non-deterministic order. For verbose output consistency, the order should be predictable.
-
-**Recommendation:**
-```go
-// Sort keys for consistent output
-keys := make([]string, 0, len(envVars))
-for k := range envVars {
-    keys = append(keys, k)
-}
-sort.Strings(keys)
-
-for _, key := range keys {
-    value := envVars[key]
-    displayValue := value
-    if key == "MSGRAPHSECRET" || key == "MSGRAPHPFXPASS" {
-        displayValue = maskSecret(value)
-    }
-    fmt.Printf("  %s = %s\n", key, displayValue)
-}
-```
-
-**Priority:** Medium
-**Impact:** User experience (consistent output)
-
----
-
-## 3. Low Priority Issues
-
-### 3.1 Inconsistent Error Handling
-
-**Location:** `msgraphgolangtestingtool.go:591`
-
-**Issue:**
-Error from `csvFile.Stat()` is ignored.
-
-**Current Code:**
-```go
-fileInfo, _ := csvFile.Stat()  // ❌ Error ignored
-```
-
-**Recommendation:**
-```go
-fileInfo, err := csvFile.Stat()
-if err != nil {
-    log.Printf("Warning: Could not stat CSV file: %v", err)
-    return
-}
-```
-
-**Priority:** Low
-**Impact:** Minor - missing error context
-
----
-
-### 3.2 Manual Flag Parsing for Lists
-
-**Location:** `msgraphgolangtestingtool.go:228-241`
-
-**Issue:**
-Custom `parseList` function could be replaced with a custom `flag.Value` type.
-
-**Current Approach:**
-```go
-toRaw := flag.String("to", "", "...")
-// Later:
-to := parseList(*toRaw)
-```
-
-**Better Approach:**
-```go
-type stringSlice []string
-
-func (s *stringSlice) String() string {
-    return strings.Join(*s, ",")
-}
-
-func (s *stringSlice) Set(value string) error {
-    *s = parseList(value)
-    return nil
-}
-
-// Usage:
-var to stringSlice
-flag.Var(&to, "to", "Comma-separated list of TO recipients")
-```
-
-**Priority:** Low
-**Impact:** Code elegance
-
----
-
-### 3.3 Improve Verbose Token Display
-
-**Location:** `msgraphgolangtestingtool.go:741-748`
-
-**Issue:**
-Token truncation logic could be clearer and more secure.
-
-**Current Code:**
-```go
-if len(tokenStr) > 40 {
-    fmt.Printf("Token (truncated): %s...%s\n", tokenStr[:20], tokenStr[len(tokenStr)-20:])
-    fmt.Printf("Token length: %d characters\n", len(tokenStr))
-} else {
-    fmt.Printf("Token: %s\n", tokenStr)  // ❌ Shows full token if < 40 chars
-}
-```
-
-**Recommendation:**
-```go
-// Always truncate for security
-if len(tokenStr) > 40 {
-    fmt.Printf("Token (truncated): %s...%s\n", tokenStr[:20], tokenStr[len(tokenStr)-20:])
-} else {
-    // Even short tokens should be masked
-    fmt.Printf("Token (truncated): %s...\n", tokenStr[:min(10, len(tokenStr))])
-}
-fmt.Printf("Token length: %d characters\n", len(tokenStr))
-```
-
-**Priority:** Low
-**Impact:** Security consistency
-
----
-
-## 4. Code Quality Improvements
-
-### 4.1 Refactor Large `main` Function
-
-**Current State:** The `main` function handles flag parsing, validation, initialization, auth, and action dispatch (226 lines).
-
-**Recommendation:** Extract into smaller functions:
-```go
-func main() {
-    if err := run(); err != nil {
-        log.Fatal(err)
-    }
-}
-
-func run() error {
-    config, err := parseConfig()
+    // Parse and configure
+    config, err := parseConfiguration()
     if err != nil {
         return err
     }
@@ -338,96 +96,440 @@ func run() error {
         return nil
     }
 
+    // Validate configuration
+    if err := validateConfiguration(config); err != nil {
+        return err
+    }
+
+    // Initialize logging
     logger, err := initializeLogging(config.Action)
     if err != nil {
-        return err
+        log.Printf("Warning: Could not initialize CSV logging: %v", err)
+        logger = nil
     }
-    defer logger.Close()
+    if logger != nil {
+        defer logger.Close()
+    }
 
-    client, err := createGraphClient(config)
+    // Create Graph client
+    client, err := createGraphClient(ctx, config)
     if err != nil {
         return err
     }
 
-    return executeAction(context.Background(), client, config, logger)
+    // Execute action
+    return executeAction(ctx, client, config, logger)
+}
+
+func setupSignalHandling() (context.Context, context.CancelFunc) {
+    ctx, cancel := context.WithCancel(context.Background())
+
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+    go func() {
+        <-sigChan
+        fmt.Println("\n\nReceived interrupt signal. Shutting down gracefully...")
+        cancel()
+    }()
+
+    return ctx, cancel
+}
+
+func parseConfiguration() (*Config, error) {
+    // All flag parsing and environment variable application
+    // Returns fully configured Config struct
+}
+
+func validateConfiguration(config *Config) error {
+    // Validate required fields
+    // Validate email formats
+    // Validate GUID formats
+    // Validate authentication method
+}
+
+func createGraphClient(ctx context.Context, config *Config) (*msgraphsdk.GraphServiceClient, error) {
+    // Get credentials
+    // Create and return client
+}
+
+func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config, logger *CSVLogger) error {
+    // Switch on action type
+    // Call appropriate handler
 }
 ```
 
+**Benefits:**
+- Each function has a single, clear responsibility
+- Easier to unit test individual components
+- Improved code readability and maintainability
+- Better error handling and logging at each stage
+
+**Priority:** Medium (optional enhancement)
+**Impact:** Code maintainability, testability
+
 ---
 
-### 4.2 Add Input Validation Functions
+### 4.2 Expand Config Struct
 
-Create validation helpers for common inputs:
+**Location:** `msgraphgolangtestingtool.go:52-55`
+
+**Current State:** Config struct only contains `VerboseMode bool`
+
+**Issue:**
+Configuration is scattered across many local variables in the `run()` function, making it hard to pass around and test.
+
+**Recommendation:**
+
 ```go
+// Config holds all application configuration
+type Config struct {
+    // Authentication
+    TenantID   string
+    ClientID   string
+    Secret     string
+    PFXPath    string
+    PFXPass    string
+    Thumbprint string
+
+    // General
+    Mailbox     string
+    Action      string
+    VerboseMode bool
+    ProxyURL    string
+    Count       int
+
+    // Email
+    To          []string
+    CC          []string
+    BCC         []string
+    Subject     string
+    Body        string
+    BodyHTML    string
+    Attachments []string
+
+    // Calendar
+    InviteSubject string
+    StartTime     string
+    EndTime       string
+
+    // Display
+    ShowVersion bool
+}
+
+func NewConfig() *Config {
+    return &Config{
+        Subject:       "Automated Tool Notification",
+        Body:          "It's a test message, please ignore",
+        InviteSubject: "System Sync",
+        Action:        "getevents",
+        Count:         3,
+    }
+}
+```
+
+**Benefits:**
+- Centralized configuration management
+- Easier to pass configuration between functions
+- Better for testing (create mock configs easily)
+- Clear structure for what the application needs
+
+**Priority:** Medium (optional enhancement)
+**Impact:** Code organization, testability
+
+---
+
+### 4.3 Add Input Validation Functions
+
+**Current State:** No validation for email addresses, GUIDs, or RFC3339 times
+
+**Issue:**
+Invalid inputs are only caught when they fail at the API level, leading to unclear error messages.
+
+**Recommendation:**
+
+```go
+// validateEmail performs basic email format validation
 func validateEmail(email string) error {
+    email = strings.TrimSpace(email)
+    if email == "" {
+        return fmt.Errorf("email cannot be empty")
+    }
     if !strings.Contains(email, "@") {
+        return fmt.Errorf("invalid email format: %s (missing @)", email)
+    }
+    parts := strings.Split(email, "@")
+    if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
         return fmt.Errorf("invalid email format: %s", email)
     }
     return nil
 }
 
-func validateTenantID(tenantID string) error {
-    // Tenant ID should be a GUID
-    if len(tenantID) != 36 {
-        return fmt.Errorf("tenant ID should be a GUID (36 characters)")
+// validateGUID validates that a string is a valid GUID format
+func validateGUID(guid, fieldName string) error {
+    guid = strings.TrimSpace(guid)
+    if guid == "" {
+        return fmt.Errorf("%s cannot be empty", fieldName)
     }
+    // Basic GUID format: 8-4-4-4-12 hex characters
+    if len(guid) != 36 {
+        return fmt.Errorf("%s should be a GUID (36 characters, e.g., 12345678-1234-1234-1234-123456789012)", fieldName)
+    }
+    // Could add more sophisticated validation with regex if needed
+    return nil
+}
+
+// validateRFC3339Time validates RFC3339 time format
+func validateRFC3339Time(timeStr, fieldName string) error {
+    if timeStr == "" {
+        return nil // Empty is allowed (defaults are used)
+    }
+    _, err := time.Parse(time.RFC3339, timeStr)
+    if err != nil {
+        return fmt.Errorf("%s is not in valid RFC3339 format (e.g., 2026-01-15T14:00:00Z): %w", fieldName, err)
+    }
+    return nil
+}
+
+// validateEmails validates a slice of email addresses
+func validateEmails(emails []string, fieldName string) error {
+    for _, email := range emails {
+        if err := validateEmail(email); err != nil {
+            return fmt.Errorf("%s contains invalid email: %w", fieldName, err)
+        }
+    }
+    return nil
+}
+
+// validateConfiguration validates all configuration fields
+func validateConfiguration(config *Config) error {
+    // Required fields
+    if err := validateGUID(config.TenantID, "Tenant ID"); err != nil {
+        return err
+    }
+    if err := validateGUID(config.ClientID, "Client ID"); err != nil {
+        return err
+    }
+    if err := validateEmail(config.Mailbox); err != nil {
+        return fmt.Errorf("invalid mailbox: %w", err)
+    }
+
+    // Authentication method
+    if config.Secret == "" && config.PFXPath == "" && config.Thumbprint == "" {
+        return fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint)")
+    }
+
+    // Validate email lists
+    if err := validateEmails(config.To, "To recipients"); err != nil {
+        return err
+    }
+    if err := validateEmails(config.CC, "CC recipients"); err != nil {
+        return err
+    }
+    if err := validateEmails(config.BCC, "BCC recipients"); err != nil {
+        return err
+    }
+
+    // Validate RFC3339 times if provided
+    if err := validateRFC3339Time(config.StartTime, "Start time"); err != nil {
+        return err
+    }
+    if err := validateRFC3339Time(config.EndTime, "End time"); err != nil {
+        return err
+    }
+
+    // Validate action
+    validActions := map[string]bool{
+        ActionGetEvents:  true,
+        ActionSendMail:   true,
+        ActionSendInvite: true,
+        ActionGetInbox:   true,
+    }
+    if !validActions[config.Action] {
+        return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", config.Action)
+    }
+
     return nil
 }
 ```
 
+**Benefits:**
+- Clear, helpful error messages before API calls
+- Prevents wasted API calls with invalid data
+- Better user experience
+- Validates data early in the pipeline
+
+**Priority:** Medium (optional enhancement)
+**Impact:** User experience, error handling
+
 ---
 
-### 4.3 Add Comprehensive Comments
+### 4.4 Add Comprehensive Comments
 
-Add package-level documentation and function comments following Go conventions:
+**Current State:** Some functions have comments, but missing package-level documentation and detailed function comments.
+
+**Issue:**
+Go conventions recommend comprehensive documentation for exported functions and package-level overview.
+
+**Recommendation:**
+
 ```go
-// Package main provides a CLI tool for interacting with Microsoft Graph API
-// to manage Exchange Online emails and calendar events.
+// Package main provides a portable CLI tool for interacting with Microsoft Graph API
+// to manage Exchange Online (EXO) mailboxes. The tool supports sending emails,
+// creating calendar events, and retrieving inbox messages and calendar events.
+//
+// Authentication methods supported:
+//   - Client Secret: Standard App Registration secret
+//   - PFX Certificate: Certificate file with private key
+//   - Windows Certificate Store: Thumbprint-based certificate retrieval (Windows only)
+//
+// All operations are automatically logged to action-specific CSV files in the
+// system temp directory for audit and troubleshooting purposes.
+//
+// Example usage:
+//
+//	msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action sendmail
+//
+// Version information is embedded from the VERSION file at compile time using go:embed.
 package main
 
-// exportCertFromStore exports a certificate and its private key from the
-// Windows Certificate Store by thumbprint. It creates an in-memory PFX blob
-// protected with a randomly generated password.
-//
-// The function performs the following steps:
-// 1. Opens the CurrentUser\My certificate store
-// 2. Searches for the certificate by SHA1 thumbprint
-// 3. Creates a temporary memory store
-// 4. Exports the certificate with private key to PFX format
+// getCredential creates an Azure credential based on the provided authentication method.
+// It supports three mutually exclusive authentication methods:
+//  1. Client Secret: Standard application secret authentication
+//  2. PFX File: Certificate-based authentication using a local .pfx file
+//  3. Windows Certificate Store: Certificate retrieval via thumbprint (Windows only)
 //
 // Parameters:
-//   - thumbprintStr: SHA1 thumbprint (40 hex characters)
+//   - tenantID: Azure AD tenant ID (GUID format)
+//   - clientID: Application (client) ID (GUID format)
+//   - secret: Client secret string (optional)
+//   - pfxPath: Path to .pfx certificate file (optional)
+//   - pfxPass: Password for .pfx file (optional)
+//   - thumbprint: SHA1 thumbprint of certificate in Windows cert store (optional)
+//   - config: Application configuration for verbose logging
 //
 // Returns:
-//   - []byte: PFX data
-//   - string: Random password used to protect the PFX
-//   - error: Any error encountered during export
-func exportCertFromStore(thumbprintStr string) ([]byte, string, error) {
-    // ...
+//   - azcore.TokenCredential: Credential object for Azure authentication
+//   - error: Error if no valid authentication method provided or credential creation fails
+//
+// Example:
+//
+//	cred, err := getCredential(tenantID, clientID, secret, "", "", "", config)
+func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {
+    // ... existing implementation
 }
+
+// createFileAttachments reads files from the filesystem and creates Graph API
+// attachment objects for email messages. Files are base64-encoded automatically.
+//
+// Parameters:
+//   - filePaths: Slice of absolute or relative file paths to attach
+//   - config: Application configuration for verbose logging
+//
+// Returns:
+//   - []models.Attachmentable: Slice of attachment objects ready for Graph API
+//   - error: Error if files cannot be read or no valid attachments processed
+//
+// MIME types are detected automatically based on file extensions. If detection
+// fails, files are treated as "application/octet-stream".
+//
+// Note: Large files may cause performance issues. Consider file size limits
+// based on Exchange Online restrictions (typically 150MB for attachments).
+func createFileAttachments(filePaths []string, config *Config) ([]models.Attachmentable, error) {
+    // ... existing implementation
+}
+
+// stringSlice implements the flag.Value interface for comma-separated string lists.
+// This allows natural command-line syntax for lists:
+//
+//	-to "user1@example.com,user2@example.com"
+//
+// Values are automatically split on commas and trimmed of whitespace.
+type stringSlice []string
 ```
+
+**Benefits:**
+- Better code documentation for maintainers
+- Follows Go conventions and best practices
+- Easier onboarding for new developers
+- Generated documentation with `godoc`
+
+**Priority:** Low (optional enhancement)
+**Impact:** Documentation, maintainability
 
 ---
 
 ## 5. Performance Considerations
 
-### 5.1 CSV Writer Buffering
+### 5.1 CSV Writer Buffering (Low Priority)
 
-**Current:** CSV writer flushes after every row.
+**Location:** `msgraphgolangtestingtool.go:123-128`
 
-**Impact:** Acceptable for CLI tool with low volume, but inefficient for high-volume scenarios.
+**Current State:** CSV writer flushes after every row write in `WriteRow()` method.
 
-**Recommendation:** If logging many items, batch flushes:
+**Impact:** Acceptable for CLI tool with low volume (typically <100 rows per run), but could be optimized for high-volume scenarios.
+
+**Recommendation:**
+
 ```go
-func writeCSVRow(row []string) {
-    if csvWriter != nil {
+type CSVLogger struct {
+    writer      *csv.Writer
+    file        *os.File
+    action      string
+    rowCount    int
+    lastFlush   time.Time
+    flushEvery  int           // Flush every N rows
+}
+
+func NewCSVLogger(action string) (*CSVLogger, error) {
+    // ... existing code ...
+
+    logger := &CSVLogger{
+        writer:     csv.NewWriter(file),
+        file:       file,
+        action:     action,
+        rowCount:   0,
+        lastFlush:  time.Now(),
+        flushEvery: 10, // Flush every 10 rows or on close
+    }
+
+    // ... existing code ...
+}
+
+func (l *CSVLogger) WriteRow(row []string) {
+    if l.writer != nil {
         timestamp := time.Now().Format("2006-01-02 15:04:05")
         fullRow := append([]string{timestamp}, row...)
-        csvWriter.Write(fullRow)
-        // Flush every N rows or on timer instead of every write
+        l.writer.Write(fullRow)
+        l.rowCount++
+
+        // Flush every N rows or every 5 seconds
+        if l.rowCount%l.flushEvery == 0 || time.Since(l.lastFlush) > 5*time.Second {
+            l.writer.Flush()
+            l.lastFlush = time.Now()
+        }
     }
 }
+
+func (l *CSVLogger) Close() error {
+    if l.writer != nil {
+        l.writer.Flush() // Always flush remaining rows on close
+    }
+    if l.file != nil {
+        return l.file.Close()
+    }
+    return nil
+}
 ```
+
+**Benefits:**
+- Reduced I/O operations for high-volume scenarios
+- Minimal impact on current low-volume usage
+- Data still flushed on close (no data loss)
+
+**Priority:** Low (optional optimization)
+**Impact:** Performance (minimal for current usage)
+**Tradeoff:** Data not immediately visible in CSV file until flush
 
 ---
 
@@ -435,42 +537,253 @@ func writeCSVRow(row []string) {
 
 ### 6.1 Add Unit Tests
 
-Create test files for key functions:
+**Current State:** No test files exist (`*_test.go`)
+
+**Issue:**
+Without tests, refactoring is risky and regression bugs may be introduced.
+
+**Recommendation:**
+
+Create `src/msgraphgolangtestingtool_test.go`:
+
 ```go
-// msgraphgolangtestingtool_test.go
-func TestParseList(t *testing.T) {
+package main
+
+import (
+    "reflect"
+    "testing"
+)
+
+// Test stringSlice.Set() method
+func TestStringSliceSet(t *testing.T) {
     tests := []struct {
+        name     string
         input    string
         expected []string
     }{
-        {"", nil},
-        {"a@example.com", []string{"a@example.com"}},
-        {"a@example.com,b@example.com", []string{"a@example.com", "b@example.com"}},
-        {" a@example.com , b@example.com ", []string{"a@example.com", "b@example.com"}},
+        {"empty", "", nil},
+        {"single", "a@example.com", []string{"a@example.com"}},
+        {"multiple", "a@example.com,b@example.com", []string{"a@example.com", "b@example.com"}},
+        {"with spaces", " a@example.com , b@example.com ", []string{"a@example.com", "b@example.com"}},
+        {"trailing comma", "a@example.com,", []string{"a@example.com"}},
+        {"extra spaces", "a@example.com  ,  , b@example.com", []string{"a@example.com", "b@example.com"}},
     }
 
     for _, tt := range tests {
-        result := parseList(tt.input)
-        if !reflect.DeepEqual(result, tt.expected) {
-            t.Errorf("parseList(%q) = %v, want %v", tt.input, result, tt.expected)
-        }
+        t.Run(tt.name, func(t *testing.T) {
+            var s stringSlice
+            err := s.Set(tt.input)
+            if err != nil {
+                t.Fatalf("Set() returned error: %v", err)
+            }
+            if !reflect.DeepEqual([]string(s), tt.expected) {
+                t.Errorf("Set(%q) = %v, want %v", tt.input, s, tt.expected)
+            }
+        })
+    }
+}
+
+// Test stringSlice.String() method
+func TestStringSliceString(t *testing.T) {
+    tests := []struct {
+        name     string
+        slice    stringSlice
+        expected string
+    }{
+        {"nil", nil, ""},
+        {"empty", stringSlice{}, ""},
+        {"single", stringSlice{"a@example.com"}, "a@example.com"},
+        {"multiple", stringSlice{"a@example.com", "b@example.com"}, "a@example.com,b@example.com"},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := tt.slice.String()
+            if result != tt.expected {
+                t.Errorf("String() = %q, want %q", result, tt.expected)
+            }
+        })
+    }
+}
+
+// Test createRecipients function
+func TestCreateRecipients(t *testing.T) {
+    emails := []string{"user1@example.com", "user2@example.com"}
+    recipients := createRecipients(emails)
+
+    if len(recipients) != 2 {
+        t.Errorf("Expected 2 recipients, got %d", len(recipients))
+    }
+
+    // Verify recipient addresses
+    addr1 := recipients[0].GetEmailAddress()
+    if addr1 == nil || addr1.GetAddress() == nil || *addr1.GetAddress() != "user1@example.com" {
+        t.Errorf("First recipient address incorrect")
+    }
+}
+
+// Test maskSecret function
+func TestMaskSecret(t *testing.T) {
+    tests := []struct {
+        name     string
+        secret   string
+        expected string
+    }{
+        {"short", "abc", "*** (3 chars)"},
+        {"medium", "12345678", "******** (8 chars)"},
+        {"long", "very-long-secret-string", "******** (23 chars)"},
+        {"empty", "", "******** (0 chars)"},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := maskSecret(tt.secret)
+            if result != tt.expected {
+                t.Errorf("maskSecret(%q) = %q, want %q", tt.secret, result, tt.expected)
+            }
+        })
+    }
+}
+
+// Test validation functions (if implemented per 4.3)
+func TestValidateEmail(t *testing.T) {
+    tests := []struct {
+        name    string
+        email   string
+        wantErr bool
+    }{
+        {"valid", "user@example.com", false},
+        {"no @", "userexample.com", true},
+        {"empty", "", true},
+        {"no domain", "user@", true},
+        {"no local", "@example.com", true},
+        {"multiple @", "user@@example.com", true},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := validateEmail(tt.email)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("validateEmail(%q) error = %v, wantErr %v", tt.email, err, tt.wantErr)
+            }
+        })
     }
 }
 ```
 
+**Benefits:**
+- Regression testing during refactoring
+- Documents expected behavior
+- Catches bugs before they reach users
+- Enables confident code changes
+
+**Priority:** Medium (recommended)
+**Impact:** Code quality, maintainability
+
+---
+
 ### 6.2 Add Integration Tests
 
-Create integration tests that mock the Graph SDK:
+**Current State:** No integration tests with Graph SDK
+
+**Issue:**
+Cannot test Graph API interactions without manual testing.
+
+**Recommendation:**
+
+Create `src/integration_test.go`:
+
 ```go
-// integration_test.go
-type mockGraphClient struct {
-    // ...
+// +build integration
+
+package main
+
+import (
+    "context"
+    "os"
+    "testing"
+    "time"
+)
+
+// Integration tests require real credentials set via environment variables
+// Run with: go test -tags=integration -v
+
+func TestIntegrationSendEmail(t *testing.T) {
+    // Skip if credentials not provided
+    if os.Getenv("MSGRAPHTENANTID") == "" {
+        t.Skip("Skipping integration test: MSGRAPH* env vars not set")
+    }
+
+    tenantID := os.Getenv("MSGRAPHTENANTID")
+    clientID := os.Getenv("MSGRAPHCLIENTID")
+    secret := os.Getenv("MSGRAPHSECRET")
+    mailbox := os.Getenv("MSGRAPHMAILBOX")
+
+    config := &Config{VerboseMode: true}
+
+    // Get credential
+    cred, err := getCredential(tenantID, clientID, secret, "", "", "", config)
+    if err != nil {
+        t.Fatalf("Failed to get credential: %v", err)
+    }
+
+    // Create client
+    client, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{"https://graph.microsoft.com/.default"})
+    if err != nil {
+        t.Fatalf("Failed to create client: %v", err)
+    }
+
+    ctx := context.Background()
+
+    // Send test email to self
+    to := []string{mailbox}
+    subject := "Integration Test - " + time.Now().Format(time.RFC3339)
+    body := "This is an automated integration test email. Safe to delete."
+
+    sendEmail(ctx, client, mailbox, to, nil, nil, subject, body, "", nil, config, nil)
+
+    // If we get here without panic, test passed
+    t.Log("Email sent successfully")
 }
 
-func TestSendEmail(t *testing.T) {
-    // Test with mock client
+func TestIntegrationListEvents(t *testing.T) {
+    if os.Getenv("MSGRAPHTENANTID") == "" {
+        t.Skip("Skipping integration test: MSGRAPH* env vars not set")
+    }
+
+    // Similar setup as above
+    // Test listEvents function
+}
+
+func TestIntegrationListInbox(t *testing.T) {
+    if os.Getenv("MSGRAPHTENANTID") == "" {
+        t.Skip("Skipping integration test: MSGRAPH* env vars not set")
+    }
+
+    // Similar setup as above
+    // Test listInbox function
 }
 ```
+
+**Usage:**
+```powershell
+# Run integration tests (requires real credentials)
+$env:MSGRAPHTENANTID = "..."
+$env:MSGRAPHCLIENTID = "..."
+$env:MSGRAPHSECRET = "..."
+$env:MSGRAPHMAILBOX = "user@example.com"
+go test -tags=integration -v ./src
+```
+
+**Benefits:**
+- Tests real Graph API interactions
+- Validates authentication methods
+- Catches API changes or SDK updates
+- Provides confidence in production behavior
+
+**Priority:** Low (optional)
+**Impact:** Integration testing, API validation
+**Note:** Requires real credentials and generates actual API calls
 
 ---
 
@@ -478,63 +791,227 @@ func TestSendEmail(t *testing.T) {
 
 ### 7.1 Add Error Troubleshooting Guide
 
-Create `TROUBLESHOOTING.md` with common errors:
-- Authentication failures
-- Certificate export issues
-- Permission errors
-- Network/proxy issues
+**Current State:** No dedicated troubleshooting documentation
+
+**Recommendation:**
+
+Create `TROUBLESHOOTING.md`:
+
+```markdown
+# Troubleshooting Guide
+
+## Authentication Errors
+
+### "no valid authentication method provided"
+**Cause:** None of -secret, -pfx, or -thumbprint were provided.
+**Solution:** Provide at least one authentication method.
+
+### "failed to decode PFX"
+**Cause:** PFX file is corrupted or password is incorrect.
+**Solution:**
+- Verify password with `-verbose` flag
+- Re-export certificate
+- Check file integrity
+
+### "failed to export cert from store"
+**Cause:** Certificate not found in Windows certificate store.
+**Solution:**
+- Verify thumbprint with: `Get-ChildItem Cert:\CurrentUser\My`
+- Ensure certificate has private key
+- Check certificate hasn't expired
+
+## Permission Errors
+
+### "Insufficient privileges to complete the operation"
+**Cause:** App Registration missing required permissions.
+**Solution:**
+- Add required permissions in Azure AD:
+  - Mail.Send (for sendmail)
+  - Mail.Read (for getinbox)
+  - Calendars.ReadWrite (for getevents, sendinvite)
+- Grant Admin Consent
+
+## Network/Proxy Errors
+
+### "connection timeout" or "dial tcp"
+**Cause:** Network connectivity issues or proxy misconfiguration.
+**Solution:**
+- Test connectivity: `Test-NetConnection graph.microsoft.com -Port 443`
+- Configure proxy: `-proxy http://proxy.company.com:8080`
+- Set environment: `$env:MSGRAPHPROXY = "http://proxy:8080"`
+
+## CSV Logging Issues
+
+### "Could not create CSV log file"
+**Cause:** Permissions issue in temp directory.
+**Solution:**
+- Check temp directory: `echo $env:TEMP`
+- Verify write permissions
+- Check disk space
+
+## Common Usage Errors
+
+### Calendar event not created
+**Cause:** Incorrect RFC3339 time format.
+**Solution:**
+- Use format: `2026-01-15T14:00:00Z`
+- Include timezone (Z for UTC)
+- Verify with `-verbose` flag
+
+### Email not delivered
+**Cause:** Invalid recipient address or blocked by Exchange.
+**Solution:**
+- Verify recipient addresses
+- Check Exchange mail flow rules
+- Review CSV log for error details
+```
+
+**Priority:** Low (optional)
+**Impact:** User support, documentation
+
+---
 
 ### 7.2 Add Security Best Practices
 
-Document:
-- How to secure client secrets
-- Certificate management recommendations
-- Least-privilege permission principles
+**Recommendation:**
+
+Create `SECURITY.md`:
+
+```markdown
+# Security Best Practices
+
+## Credential Management
+
+### Client Secrets
+- **Never commit secrets to source control**
+- Store in environment variables or secure vaults (Azure Key Vault, HashiCorp Vault)
+- Rotate secrets regularly (every 90 days recommended)
+- Use separate secrets for dev/test/prod environments
+
+### Certificates
+- Use certificates instead of secrets for production
+- Store PFX files in secure locations with restricted permissions
+- Protect PFX files with strong passwords
+- Rotate certificates before expiration
+- Use Windows Certificate Store when possible (no file on disk)
+
+### Environment Variables
+```powershell
+# Secure way to set credentials (not visible in process list)
+$env:MSGRAPHSECRET = Read-Host -AsSecureString "Enter secret" | ConvertFrom-SecureString
+
+# Or use Azure Key Vault
+$env:MSGRAPHSECRET = (Get-AzKeyVaultSecret -VaultName "MyVault" -Name "GraphSecret").SecretValueText
+```
+
+## Least Privilege Principle
+
+### API Permissions
+Only grant the minimum permissions required:
+- **getevents**: Calendars.Read (not ReadWrite)
+- **getinbox**: Mail.Read (not Mail.ReadWrite)
+- **sendmail**: Mail.Send only
+- **sendinvite**: Calendars.ReadWrite only
+
+Avoid granting `Mail.ReadWrite.All` or `Calendars.ReadWrite.All` unless absolutely necessary.
+
+## Logging and Auditing
+
+### CSV Logs
+- CSV logs contain operation details but not secrets
+- Logs stored in: `%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`
+- Review logs periodically for unauthorized usage
+- Clean up old logs to prevent information disclosure
+
+### Verbose Mode
+- Verbose mode shows truncated tokens (not full tokens)
+- Secrets are masked in verbose output
+- Use verbose mode for troubleshooting, not in production scripts
+
+## Network Security
+
+### Proxy Usage
+- Use corporate proxy for traffic monitoring
+- Proxy credentials should also be secured
+- Avoid HTTP proxies (use HTTPS)
+
+### TLS/SSL
+- Tool uses HTTPS for all Graph API calls
+- Certificate validation is enforced
+- Do not disable certificate validation
+
+## Access Control
+
+### Script Deployment
+- Restrict who can execute the tool
+- Use file permissions to limit access
+- Audit script execution in enterprise environments
+
+### Principle of Least Access
+- Create dedicated service accounts for automation
+- Don't use personal accounts for automation
+- Limit mailbox access to specific users/groups
+```
+
+**Priority:** Low (optional)
+**Impact:** Security awareness, best practices
 
 ---
 
 ## Summary of Recommendations by Priority
 
-| Priority | Count | Examples |
-|----------|-------|----------|
-| **Critical** | 0 | None remaining |
-| **High** | 3 | CSV schema conflict, global variables, error typo |
-| **Medium** | 3 | Signal handling, redundant checks, env var iteration |
-| **Low** | 3 | Error handling consistency, flag parsing, verbose display |
+| Priority | Count | Status | Examples |
+|----------|-------|--------|----------|
+| **Critical** | 0 | ✅ Complete | All critical issues resolved |
+| **High** | 0 | ✅ Complete | All high priority issues resolved |
+| **Medium** | 0 | ✅ Complete | All medium priority issues resolved |
+| **Low** | 0 | ✅ Complete | All low priority issues resolved |
+| **Code Quality** | 4 | Optional | Function refactoring, Config struct, validation, comments |
+| **Performance** | 1 | Optional | CSV buffering (minimal impact) |
+| **Testing** | 2 | Optional | Unit tests, integration tests |
+| **Documentation** | 2 | Optional | Troubleshooting guide, security best practices |
 
-**Estimated Implementation Effort:**
-- High priority: 6-8 hours
-- Medium priority: 3-4 hours
-- Low priority: 2-4 hours
+**Total Remaining:** 9 optional enhancement items
 
-**Total:** ~12-16 hours for complete implementation
+---
+
+## Implementation Status
+
+### Completed (v1.12.6 - v1.14.10)
+✅ All Critical, High, Medium, and Low priority issues resolved
+✅ CSV schema conflict fixed
+✅ Error message typo fixed
+✅ Global variables refactored to dependency injection
+✅ Signal handling for graceful shutdown
+✅ Redundant condition checks removed
+✅ Environment variable iteration made deterministic
+✅ Error handling verified and corrected
+✅ Custom flag types implemented
+✅ Token display security enhanced
+
+### Optional Enhancements (Future Consideration)
+- Refactor large functions into smaller, focused units
+- Expand Config struct to centralize configuration
+- Add input validation helpers
+- Add comprehensive code comments
+- Optimize CSV writer buffering
+- Create unit test suite
+- Create integration test suite
+- Add troubleshooting documentation
+- Add security best practices guide
 
 ---
 
 ## Next Steps
 
-1. **Short-term:** Address high-priority issues (CSV schema, error message, global variables)
-2. **Medium-term:** Refactor for better code quality (signal handling, redundant checks, deterministic output)
-3. **Long-term:** Add comprehensive testing and documentation
+The codebase is in **excellent condition** with all critical, high, medium, and low priority issues resolved. The remaining items are **optional enhancements** that would further improve code quality, testability, and documentation, but are not required for production use.
 
-## Completed Improvements (v1.12.6)
-
-✅ **Critical Issue 1.1** - Fixed `log.Fatalf` preventing deferred cleanup
-  - Refactored `main()` to use `run()` pattern
-  - All deferred functions now execute properly
-  - CSV log file always closed and flushed on exit
-
-✅ **Critical Issue 1.2** - Added thumbprint validation (Security)
-  - Thumbprint validated to be exactly 40 hexadecimal characters (SHA1 hash)
-  - Added `isHexString()` helper function for validation
-  - Validation occurs before certificate store operations
-  - Clear error messages for invalid formats
-
-✅ **Medium Issue 3.2** - Replaced magic strings with constants
-  - Added action constants: `ActionGetEvents`, `ActionSendMail`, `ActionSendInvite`, `ActionGetInbox`
-  - Added status constants: `StatusSuccess`, `StatusError`
-  - Improved code maintainability and reduced typo risk
+**Recommended Priority:**
+1. **Testing** (6.1, 6.2) - Most valuable for long-term maintainability
+2. **Code Quality** (4.1, 4.2, 4.3) - Improves developer experience
+3. **Documentation** (7.1, 7.2) - Helps users and operators
+4. **Performance** (5.1) - Low priority, minimal current impact
 
 ---
 
-*End of Code Review - Version 1.12.6*
+*Code Review Version: 1.14.14 - 2026-01-04*

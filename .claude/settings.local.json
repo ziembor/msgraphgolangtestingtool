@@ -14,7 +14,12 @@
       "Bash(git rev-parse:*)",
       "Bash(git push:*)",
       "Bash(gh pr create:*)",
-      "Bash(./src/msgraphgolangtestingtool.exe:*)"
+      "Bash(./src/msgraphgolangtestingtool.exe:*)",
+      "Bash(findstr:*)",
+      "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\")",
+      "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\\\\src\")",
+      "Bash(dir \"C:\\\\Workspace\\\\msgraphgolangtestingtool\\\\ChangeLog\")",
+      "Bash(.msgraphgolangtestingtool.exe -version)"
     ]
   },
   "outputStyle": "Learning"
