@@ -1,5 +1,7 @@
 # Portable Microsoft Graph GoLang CLI Tool
 
+**Repository:** [https://github.com/ziembor/msgraphgolangtestingtool](https://github.com/ziembor/msgraphgolangtestingtool)
+
 ## Overview
 
 This is a lightweight, portable command-line interface (CLI) tool written in **Go (Golang)** designed for Windows (but cross-compatible). It allows interactions with the **Microsoft Graph API** to manage emails and calendar events on Exchange Online (EXO) mailboxes.

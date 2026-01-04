@@ -91,11 +91,14 @@ type Flags struct {
 	Count    int
 }
 
-// CSVLogger handles CSV logging operations
+// CSVLogger handles CSV logging operations with periodic buffering
 type CSVLogger struct {
-	writer *csv.Writer
-	file   *os.File
-	action string
+	writer     *csv.Writer
+	file       *os.File
+	action     string
+	rowCount   int       // Number of rows written since last flush
+	lastFlush  time.Time // Time of last flush
+	flushEvery int       // Flush every N rows
 }
 
 // NewCSVLogger creates a new CSV logger for the specified action
@@ -115,9 +118,12 @@ func NewCSVLogger(action string) (*CSVLogger, error) {
 	}
 
 	logger := &CSVLogger{
-		writer: csv.NewWriter(file),
-		file:   file,
-		action: action,
+		writer:     csv.NewWriter(file),
+		file:       file,
+		action:     action,
+		rowCount:   0,
+		lastFlush:  time.Now(),
+		flushEvery: 10, // Flush every 10 rows or on close
 	}
 
 	// Check if file is new (empty) to write headers
@@ -152,21 +158,27 @@ func (l *CSVLogger) writeHeader() {
 	l.writer.Flush()
 }
 
-// WriteRow writes a row to the CSV file
+// WriteRow writes a row to the CSV file with periodic buffering
 func (l *CSVLogger) WriteRow(row []string) {
 	if l.writer != nil {
 		// Prepend timestamp
 		timestamp := time.Now().Format("2006-01-02 15:04:05")
 		fullRow := append([]string{timestamp}, row...)
 		l.writer.Write(fullRow)
-		l.writer.Flush()
+		l.rowCount++
+
+		// Flush every N rows or every 5 seconds
+		if l.rowCount%l.flushEvery == 0 || time.Since(l.lastFlush) > 5*time.Second {
+			l.writer.Flush()
+			l.lastFlush = time.Now()
+		}
 	}
 }
 
-// Close closes the CSV file
+// Close closes the CSV file, ensuring all buffered data is flushed
 func (l *CSVLogger) Close() error {
 	if l.writer != nil {
-		l.writer.Flush()
+		l.writer.Flush() // Always flush remaining rows on close
 	}
 	if l.file != nil {
 		return l.file.Close()
@@ -296,6 +308,22 @@ func setupSignalHandling() (context.Context, context.CancelFunc) {
 // parseAndConfigureFlags defines all command-line flags, parses them,
 // applies environment variables, and returns populated Flags and Config structs
 func parseAndConfigureFlags() (*Flags, *Config) {
+	// Customize help output
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Microsoft Graph GoLang Testing Tool - Version %s\n\n", version)
+		fmt.Fprintf(flag.CommandLine.Output(), "Repository: https://github.com/ziembor/msgraphgolangtestingtool\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "Options:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(flag.CommandLine.Output(), "\nEnvironment Variables:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  All flags can be set via environment variables with MSGRAPH prefix\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  Example: MSGRAPHTENANTID, MSGRAPHCLIENTID, MSGRAPHSECRET\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  Command-line flags take precedence over environment variables\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Examples:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -tenantid \"...\" -clientid \"...\" -secret \"...\" -mailbox \"user@example.com\" -action getevents\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -tenantid \"...\" -clientid \"...\" -thumbprint \"ABC123\" -mailbox \"user@example.com\" -action sendmail\n\n", os.Args[0])
+	}
+
 	// Define Command Line Parameters
 	showVersion := flag.Bool("version", false, "Show version information")
 	tenantID := flag.String("tenantid", "", "The Azure Tenant ID")
@@ -414,17 +442,72 @@ func parseAndConfigureFlags() (*Flags, *Config) {
 	return flags, config
 }
 
+// validateEmail performs basic email format validation
+func validateEmail(email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return fmt.Errorf("email cannot be empty")
+	}
+	if !strings.Contains(email, "@") {
+		return fmt.Errorf("invalid email format: %s (missing @)", email)
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid email format: %s", email)
+	}
+	return nil
+}
+
+// validateEmails validates a slice of email addresses
+func validateEmails(emails []string, fieldName string) error {
+	for _, email := range emails {
+		if err := validateEmail(email); err != nil {
+			return fmt.Errorf("%s contains invalid email: %w", fieldName, err)
+		}
+	}
+	return nil
+}
+
+// validateGUID validates that a string is a valid GUID format
+func validateGUID(guid, fieldName string) error {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return fmt.Errorf("%s cannot be empty", fieldName)
+	}
+	// Basic GUID format: 8-4-4-4-12 hex characters
+	if len(guid) != 36 {
+		return fmt.Errorf("%s should be a GUID (36 characters, format: 12345678-1234-1234-1234-123456789012)", fieldName)
+	}
+	// Check for proper dash positions
+	if guid[8] != '-' || guid[13] != '-' || guid[18] != '-' || guid[23] != '-' {
+		return fmt.Errorf("%s has invalid GUID format (dashes at wrong positions)", fieldName)
+	}
+	return nil
+}
+
+// validateRFC3339Time validates RFC3339 time format
+func validateRFC3339Time(timeStr, fieldName string) error {
+	if timeStr == "" {
+		return nil // Empty is allowed (defaults are used)
+	}
+	_, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return fmt.Errorf("%s is not in valid RFC3339 format (e.g., 2026-01-15T14:00:00Z): %w", fieldName, err)
+	}
+	return nil
+}
+
 // validateConfiguration checks that required configuration parameters are valid
 func validateConfiguration(flags *Flags) error {
-	// Check required fields
-	if flags.TenantID == "" {
-		return fmt.Errorf("missing required parameter: tenantid")
+	// Validate required fields with format checking
+	if err := validateGUID(flags.TenantID, "Tenant ID"); err != nil {
+		return err
 	}
-	if flags.ClientID == "" {
-		return fmt.Errorf("missing required parameter: clientid")
+	if err := validateGUID(flags.ClientID, "Client ID"); err != nil {
+		return err
 	}
-	if flags.Mailbox == "" {
-		return fmt.Errorf("missing required parameter: mailbox")
+	if err := validateEmail(flags.Mailbox); err != nil {
+		return fmt.Errorf("invalid mailbox: %w", err)
 	}
 
 	// Check that at least one authentication method is provided
@@ -444,6 +527,42 @@ func validateConfiguration(flags *Flags) error {
 	}
 	if authMethodCount > 1 {
 		return fmt.Errorf("multiple authentication methods provided: use only one of -secret, -pfx, or -thumbprint")
+	}
+
+	// Validate email lists if provided
+	if len(flags.To) > 0 {
+		if err := validateEmails(flags.To, "To recipients"); err != nil {
+			return err
+		}
+	}
+	if len(flags.Cc) > 0 {
+		if err := validateEmails(flags.Cc, "CC recipients"); err != nil {
+			return err
+		}
+	}
+	if len(flags.Bcc) > 0 {
+		if err := validateEmails(flags.Bcc, "BCC recipients"); err != nil {
+			return err
+		}
+	}
+
+	// Validate RFC3339 times if provided
+	if err := validateRFC3339Time(flags.StartTime, "Start time"); err != nil {
+		return err
+	}
+	if err := validateRFC3339Time(flags.EndTime, "End time"); err != nil {
+		return err
+	}
+
+	// Validate action
+	validActions := map[string]bool{
+		ActionGetEvents:  true,
+		ActionSendMail:   true,
+		ActionSendInvite: true,
+		ActionGetInbox:   true,
+	}
+	if !validActions[flags.Action] {
+		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", flags.Action)
 	}
 
 	return nil

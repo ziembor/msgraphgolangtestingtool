@@ -2,6 +2,8 @@
 
 A portable, single-binary CLI tool for interacting with Microsoft Graph API to manage Exchange Online emails and calendar events.
 
+**Repository:** [https://github.com/ziembor/msgraphgolangtestingtool](https://github.com/ziembor/msgraphgolangtestingtool)
+
 ## Purpose
 
 This tool provides a lightweight, standalone executable for testing and managing Microsoft Graph API operations on Exchange Online mailboxes without requiring additional runtimes or dependencies. Designed for Windows environments, it supports multiple authentication methods and automatically logs all operations to CSV files.
