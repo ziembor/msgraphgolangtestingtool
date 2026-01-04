@@ -67,14 +67,14 @@ jobs:
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path ${{ matrix.binary_name }} -DestinationPath ${{ matrix.zip_name }}
+        Compress-Archive -Path ${{ matrix.binary_name }},EXAMPLES.md,LICENSE,README.md -DestinationPath ${{ matrix.zip_name }}
         Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
         Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
 
     - name: Create ZIP archive (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }}
+        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }} EXAMPLES.md LICENSE README.md
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
         ls -lh ${{ matrix.zip_name }}
 
@@ -93,6 +93,14 @@ jobs:
 
           Portable CLI tool for Microsoft Graph API operations.
 
+          ### What's Included
+
+          Each ZIP archive contains:
+          - **Binary executable** (`msgraphgolangtestingtool.exe` or `msgraphgolangtestingtool`)
+          - **EXAMPLES.md** - Comprehensive usage examples
+          - **LICENSE** - MIT License
+          - **README.md** - Complete documentation
+
           ### Installation
           **Windows:**
           1. Download `msgraphgolangtestingtool-windows.zip`
@@ -105,7 +113,7 @@ jobs:
           3. Make it executable: `chmod +x msgraphgolangtestingtool`
           4. Run: `./msgraphgolangtestingtool`
 
-          ### Usage
+          ### Quick Start
           **Windows:**
           ```powershell
           .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
@@ -116,6 +124,9 @@ jobs:
           ./msgraphgolangtestingtool -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
           ```
 
-          See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
+          ### Documentation
+          - See **EXAMPLES.md** in the ZIP for detailed usage examples
+          - See **README.md** in the ZIP for complete reference
+          - Online: [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

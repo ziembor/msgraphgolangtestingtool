@@ -388,4 +388,86 @@ All flags can be set via environment variables with the `MSGRAPH` prefix:
 
 ---
 
-NOTE: *Generated for msgraphgolangtestingtool v1.14.10*
+## 17. Retry Configuration (v1.16.0+)
+
+Configure network resilience with automatic retry on transient failures:
+
+```powershell
+# Use custom retry settings
+.\msgraphgolangtestingtool.exe -action getevents `
+    -maxretries 5 `
+    -retrydelay 1000  # 1 second base delay
+
+# Disable retries (set to 0)
+.\msgraphgolangtestingtool.exe -action sendmail `
+    -to "user@example.com" `
+    -maxretries 0
+
+# Use aggressive retry for unreliable networks
+.\msgraphgolangtestingtool.exe -action getinbox `
+    -maxretries 10 `
+    -retrydelay 3000  # 3 second base delay
+
+# Set via environment variables
+$env:MSGRAPHMAXRETRIES = "5"
+$env:MSGRAPHRETRYDELAY = "2500"
+.\msgraphgolangtestingtool.exe -action getevents
+```
+
+**Retry Behavior:**
+- **Default**: 3 retries with 2-second base delay
+- **Exponential backoff**: Delay pattern 2s → 4s → 8s → 16s → 30s (capped at 30 seconds)
+- **Automatic retry on**:
+  - HTTP 429 (Too Many Requests / Graph API throttling)
+  - HTTP 503 (Service Unavailable)
+  - HTTP 504 (Gateway Timeout)
+  - Network timeouts and connection errors
+- **Never retries**: Authentication failures, bad requests (400), not found (404)
+
+**Example with verbose output:**
+```powershell
+.\msgraphgolangtestingtool.exe -action getinbox `
+    -maxretries 3 `
+    -retrydelay 1000 `
+    -verbose
+
+# Output will show retry attempts:
+# Retryable error encountered (attempt 1/3): timeout. Retrying in 1s...
+# Retryable error encountered (attempt 2/3): timeout. Retrying in 2s...
+# Operation succeeded after 2 retries
+```
+
+---
+
+## 18. Environment Variables Reference (Updated v1.16.0)
+
+All flags can be set via environment variables with the `MSGRAPH` prefix:
+
+| Flag | Environment Variable | Example |
+|------|---------------------|---------|
+| `-tenantid` | `MSGRAPHTENANTID` | `"tenant-id"` |
+| `-clientid` | `MSGRAPHCLIENTID` | `"client-id"` |
+| `-secret` | `MSGRAPHSECRET` | `"secret"` |
+| `-pfx` | `MSGRAPHPFX` | `"C:\\cert.pfx"` |
+| `-pfxpass` | `MSGRAPHPFXPASS` | `"password"` |
+| `-thumbprint` | `MSGRAPHTHUMBPRINT` | `"CD817..."` |
+| `-mailbox` | `MSGRAPHMAILBOX` | `"user@example.com"` |
+| `-to` | `MSGRAPHTO` | `"user1@example.com,user2@example.com"` |
+| `-cc` | `MSGRAPHCC` | `"cc@example.com"` |
+| `-bcc` | `MSGRAPHBCC` | `"bcc@example.com"` |
+| `-subject` | `MSGRAPHSUBJECT` | `"Email Subject"` |
+| `-body` | `MSGRAPHBODY` | `"Email body"` |
+| `-bodyHTML` | `MSGRAPHBODYHTML` | `"<h1>HTML</h1>"` |
+| `-attachments` | `MSGRAPHATTACHMENTS` | `"file1.pdf,file2.xlsx"` |
+| `-invite-subject` | `MSGRAPHINVITESUBJECT` | `"Meeting"` |
+| `-start` | `MSGRAPHSTART` | `"2026-01-15T14:00:00Z"` |
+| `-end` | `MSGRAPHEND` | `"2026-01-15T15:00:00Z"` |
+| `-action` | `MSGRAPHACTION` | `"sendmail"` |
+| `-proxy` | `MSGRAPHPROXY` | `"http://proxy:8080"` |
+| `-count` | `MSGRAPHCOUNT` | `"10"` |
+| `-maxretries` | `MSGRAPHMAXRETRIES` | `"5"` |
+| `-retrydelay` | `MSGRAPHRETRYDELAY` | `"2000"` |
+
+---
+
+NOTE: *Generated for msgraphgolangtestingtool v1.16.0*

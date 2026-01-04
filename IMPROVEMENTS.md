@@ -65,51 +65,8 @@ func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, c
 | **`go vet` Issues** | 0 | Excellent ✅ |
 | **Function Size** | Avg ~50 lines | Well-factored ✅ |
 | **Package Structure** | Single package | Appropriate for tool size ✅ |
-**Version:** 1.14.14
-**Review Date:** 2026-01-04
-**Reviewer:** AI Code Analysis
-
-## Executive Summary
-
-This code review identifies opportunities for improvement in code quality, testing, and maintainability. **All Critical, High, Medium, and Low priority issues have been completed.** The remaining items focus on optional enhancements for code quality, testing, and documentation.
 
 ---
-
-## Completed Improvements
-
-### ✅ High Priority (All Complete)
-
-**1.1 CSV Schema Conflict** (v1.14.4)
-- Fixed incompatible CSV schemas when multiple action types run on the same day
-- Each action type now creates its own log file: `_msgraphgolangtestingtool_{action}_{date}.csv`
-- Prevents data corruption and column misalignment
-
-**1.2 Missing Parenthesis in Error Message** (v1.14.4)
-- Fixed typo in authentication error message (src/msgraphgolangtestingtool.go:466)
-- Added missing closing parenthesis
-
-**1.3 Global Variables Reduce Testability** (v1.14.6)
-- Removed global variables (`csvWriter`, `csvFile`, `verboseMode`)
-- Created `Config` struct to hold application configuration
-- Created `CSVLogger` struct with methods for CSV logging operations
-- Converted to dependency injection pattern
-
-### ✅ Medium Priority (All Complete)
-
-**2.1 No Signal Handling (Graceful Shutdown)** (v1.14.8)
-- Added signal handling for Ctrl+C (SIGINT) and SIGTERM interrupts
-- Implemented context cancellation for graceful shutdown
-- All API operations can now be cancelled mid-execution
-- CSV logger properly closes on interrupt
-
-**2.2 Redundant Condition Check** (v1.14.7)
-- Removed duplicate `if pfxPath != ""` check in `printVerboseConfig()` function
-- Improved code clarity
-
-**2.3 Environment Variable Iteration Not Deterministic** (v1.14.9)
-- Sorted environment variable keys alphabetically before display in verbose output
-- Ensures consistent output order across multiple runs
-- Added key sorting with `sort.Strings(keys)`
 
 ## Improvement Recommendations
 
@@ -187,29 +144,8 @@ func TestListEvents_MockClient(t *testing.T) {
 
 **Effort:** Medium (2-3 hours)
 **Impact:** High (prevents critical auth bugs)
-### ✅ Low Priority (All Complete)
-
-**3.1 Inconsistent Error Handling** (Verified in v1.14.6)
-- Verified that `file.Stat()` error is properly handled
-- Error is logged with warning message instead of being ignored
-- Location: src/msgraphgolangtestingtool.go:87-89
-
-**3.2 Manual Flag Parsing for Lists** (v1.14.10)
-- Created `stringSlice` type implementing `flag.Value` interface
-- Replaced manual `parseList()` calls with idiomatic Go flag parsing
-- Flags `-to`, `-cc`, `-bcc`, and `-attachments` now use custom type
-
-**3.3 Improve Verbose Token Display** (v1.14.10)
-- Always truncate tokens for security, even if length < 40 characters
-- Short tokens now show maximum 10 characters followed by "..."
-- Prevents accidental exposure of short test tokens
-- Location: src/msgraphgolangtestingtool.go:994-1006
 
 ---
-
-## 4. Code Quality Improvements (Optional Enhancements)
-
-### 4.1 Refactor Large `run()` Function
 
 ### 2. Add Input Sanitization for File Paths (Priority: Medium-High)
 
@@ -300,92 +236,6 @@ type Config struct {
     ProxyURL    string
     MaxRetries  int           // Maximum retry attempts (default: 3)
     RetryDelay  time.Duration // Base delay between retries (default: 2s)
-**Location:** `msgraphgolangtestingtool.go:241-431`
-
-**Current State:** The `run()` function handles signal setup, flag parsing, environment variables, validation, initialization, authentication, and action dispatch (~190 lines).
-
-**Issue:**
-The function violates the Single Responsibility Principle and is difficult to test in isolation.
-
-**Recommendation:** Extract into smaller, focused functions:
-
-```go
-func run() error {
-    // Setup signal handling
-    ctx, cancel := setupSignalHandling()
-    defer cancel()
-
-    // Parse and configure
-    config, err := parseConfiguration()
-    if err != nil {
-        return err
-    }
-
-    if config.ShowVersion {
-        printVersion()
-        return nil
-    }
-
-    // Validate configuration
-    if err := validateConfiguration(config); err != nil {
-        return err
-    }
-
-    // Initialize logging
-    logger, err := initializeLogging(config.Action)
-    if err != nil {
-        log.Printf("Warning: Could not initialize CSV logging: %v", err)
-        logger = nil
-    }
-    if logger != nil {
-        defer logger.Close()
-    }
-
-    // Create Graph client
-    client, err := createGraphClient(ctx, config)
-    if err != nil {
-        return err
-    }
-
-    // Execute action
-    return executeAction(ctx, client, config, logger)
-}
-
-func setupSignalHandling() (context.Context, context.CancelFunc) {
-    ctx, cancel := context.WithCancel(context.Background())
-
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-    go func() {
-        <-sigChan
-        fmt.Println("\n\nReceived interrupt signal. Shutting down gracefully...")
-        cancel()
-    }()
-
-    return ctx, cancel
-}
-
-func parseConfiguration() (*Config, error) {
-    // All flag parsing and environment variable application
-    // Returns fully configured Config struct
-}
-
-func validateConfiguration(config *Config) error {
-    // Validate required fields
-    // Validate email formats
-    // Validate GUID formats
-    // Validate authentication method
-}
-
-func createGraphClient(ctx context.Context, config *Config) (*msgraphsdk.GraphServiceClient, error) {
-    // Get credentials
-    // Create and return client
-}
-
-func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config, logger *CSVLogger) error {
-    // Switch on action type
-    // Call appropriate handler
 }
 
 // Add exponential backoff retry wrapper
@@ -396,14 +246,6 @@ func retryWithBackoff(ctx context.Context, maxRetries int, baseDelay time.Durati
         if err == nil {
             return nil // Success
         }
-**Benefits:**
-- Each function has a single, clear responsibility
-- Easier to unit test individual components
-- Improved code readability and maintainability
-- Better error handling and logging at each stage
-
-**Priority:** Medium (optional enhancement)
-**Impact:** Code maintainability, testability
 
         // Check if error is retryable
         if !isRetryableError(err) {
@@ -468,61 +310,6 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
     }
 
     // ... process result ...
-### 4.2 Expand Config Struct
-
-**Location:** `msgraphgolangtestingtool.go:52-55`
-
-**Current State:** Config struct only contains `VerboseMode bool`
-
-**Issue:**
-Configuration is scattered across many local variables in the `run()` function, making it hard to pass around and test.
-
-**Recommendation:**
-
-```go
-// Config holds all application configuration
-type Config struct {
-    // Authentication
-    TenantID   string
-    ClientID   string
-    Secret     string
-    PFXPath    string
-    PFXPass    string
-    Thumbprint string
-
-    // General
-    Mailbox     string
-    Action      string
-    VerboseMode bool
-    ProxyURL    string
-    Count       int
-
-    // Email
-    To          []string
-    CC          []string
-    BCC         []string
-    Subject     string
-    Body        string
-    BodyHTML    string
-    Attachments []string
-
-    // Calendar
-    InviteSubject string
-    StartTime     string
-    EndTime       string
-
-    // Display
-    ShowVersion bool
-}
-
-func NewConfig() *Config {
-    return &Config{
-        Subject:       "Automated Tool Notification",
-        Body:          "It's a test message, please ignore",
-        InviteSubject: "System Sync",
-        Action:        "getevents",
-        Count:         3,
-    }
 }
 ```
 
@@ -548,22 +335,6 @@ func NewConfig() *Config {
 - No log levels (DEBUG, INFO, WARN, ERROR)
 - Difficult to filter logs in production vs. development
 - Verbose mode is all-or-nothing
-- Centralized configuration management
-- Easier to pass configuration between functions
-- Better for testing (create mock configs easily)
-- Clear structure for what the application needs
-
-**Priority:** Medium (optional enhancement)
-**Impact:** Code organization, testability
-
----
-
-### 4.3 Add Input Validation Functions
-
-**Current State:** No validation for email addresses, GUIDs, or RFC3339 times
-
-**Issue:**
-Invalid inputs are only caught when they fail at the API level, leading to unclear error messages.
 
 **Recommendation:**
 
@@ -645,107 +416,6 @@ func setupGraphClient(ctx context.Context, config *Config, logger *Logger) (*msg
 
     logger.Info("Graph SDK client initialized successfully")
     return client, nil
-// validateEmail performs basic email format validation
-func validateEmail(email string) error {
-    email = strings.TrimSpace(email)
-    if email == "" {
-        return fmt.Errorf("email cannot be empty")
-    }
-    if !strings.Contains(email, "@") {
-        return fmt.Errorf("invalid email format: %s (missing @)", email)
-    }
-    parts := strings.Split(email, "@")
-    if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-        return fmt.Errorf("invalid email format: %s", email)
-    }
-    return nil
-}
-
-// validateGUID validates that a string is a valid GUID format
-func validateGUID(guid, fieldName string) error {
-    guid = strings.TrimSpace(guid)
-    if guid == "" {
-        return fmt.Errorf("%s cannot be empty", fieldName)
-    }
-    // Basic GUID format: 8-4-4-4-12 hex characters
-    if len(guid) != 36 {
-        return fmt.Errorf("%s should be a GUID (36 characters, e.g., 12345678-1234-1234-1234-123456789012)", fieldName)
-    }
-    // Could add more sophisticated validation with regex if needed
-    return nil
-}
-
-// validateRFC3339Time validates RFC3339 time format
-func validateRFC3339Time(timeStr, fieldName string) error {
-    if timeStr == "" {
-        return nil // Empty is allowed (defaults are used)
-    }
-    _, err := time.Parse(time.RFC3339, timeStr)
-    if err != nil {
-        return fmt.Errorf("%s is not in valid RFC3339 format (e.g., 2026-01-15T14:00:00Z): %w", fieldName, err)
-    }
-    return nil
-}
-
-// validateEmails validates a slice of email addresses
-func validateEmails(emails []string, fieldName string) error {
-    for _, email := range emails {
-        if err := validateEmail(email); err != nil {
-            return fmt.Errorf("%s contains invalid email: %w", fieldName, err)
-        }
-    }
-    return nil
-}
-
-// validateConfiguration validates all configuration fields
-func validateConfiguration(config *Config) error {
-    // Required fields
-    if err := validateGUID(config.TenantID, "Tenant ID"); err != nil {
-        return err
-    }
-    if err := validateGUID(config.ClientID, "Client ID"); err != nil {
-        return err
-    }
-    if err := validateEmail(config.Mailbox); err != nil {
-        return fmt.Errorf("invalid mailbox: %w", err)
-    }
-
-    // Authentication method
-    if config.Secret == "" && config.PFXPath == "" && config.Thumbprint == "" {
-        return fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint)")
-    }
-
-    // Validate email lists
-    if err := validateEmails(config.To, "To recipients"); err != nil {
-        return err
-    }
-    if err := validateEmails(config.CC, "CC recipients"); err != nil {
-        return err
-    }
-    if err := validateEmails(config.BCC, "BCC recipients"); err != nil {
-        return err
-    }
-
-    // Validate RFC3339 times if provided
-    if err := validateRFC3339Time(config.StartTime, "Start time"); err != nil {
-        return err
-    }
-    if err := validateRFC3339Time(config.EndTime, "End time"); err != nil {
-        return err
-    }
-
-    // Validate action
-    validActions := map[string]bool{
-        ActionGetEvents:  true,
-        ActionSendMail:   true,
-        ActionSendInvite: true,
-        ActionGetInbox:   true,
-    }
-    if !validActions[config.Action] {
-        return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", config.Action)
-    }
-
-    return nil
 }
 ```
 
@@ -856,89 +526,6 @@ func TestIntegration_FullWorkflow(t *testing.T) {
             t.Error("Created calendar event not found")
         }
     })
-- Clear, helpful error messages before API calls
-- Prevents wasted API calls with invalid data
-- Better user experience
-- Validates data early in the pipeline
-
-**Priority:** Medium (optional enhancement)
-**Impact:** User experience, error handling
-
----
-
-### 4.4 Add Comprehensive Comments
-
-**Current State:** Some functions have comments, but missing package-level documentation and detailed function comments.
-
-**Issue:**
-Go conventions recommend comprehensive documentation for exported functions and package-level overview.
-
-**Recommendation:**
-
-```go
-// Package main provides a portable CLI tool for interacting with Microsoft Graph API
-// to manage Exchange Online (EXO) mailboxes. The tool supports sending emails,
-// creating calendar events, and retrieving inbox messages and calendar events.
-//
-// Authentication methods supported:
-//   - Client Secret: Standard App Registration secret
-//   - PFX Certificate: Certificate file with private key
-//   - Windows Certificate Store: Thumbprint-based certificate retrieval (Windows only)
-//
-// All operations are automatically logged to action-specific CSV files in the
-// system temp directory for audit and troubleshooting purposes.
-//
-// Example usage:
-//
-//	msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action sendmail
-//
-// Version information is embedded from the VERSION file at compile time using go:embed.
-package main
-
-// getCredential creates an Azure credential based on the provided authentication method.
-// It supports three mutually exclusive authentication methods:
-//  1. Client Secret: Standard application secret authentication
-//  2. PFX File: Certificate-based authentication using a local .pfx file
-//  3. Windows Certificate Store: Certificate retrieval via thumbprint (Windows only)
-//
-// Parameters:
-//   - tenantID: Azure AD tenant ID (GUID format)
-//   - clientID: Application (client) ID (GUID format)
-//   - secret: Client secret string (optional)
-//   - pfxPath: Path to .pfx certificate file (optional)
-//   - pfxPass: Password for .pfx file (optional)
-//   - thumbprint: SHA1 thumbprint of certificate in Windows cert store (optional)
-//   - config: Application configuration for verbose logging
-//
-// Returns:
-//   - azcore.TokenCredential: Credential object for Azure authentication
-//   - error: Error if no valid authentication method provided or credential creation fails
-//
-// Example:
-//
-//	cred, err := getCredential(tenantID, clientID, secret, "", "", "", config)
-func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {
-    // ... existing implementation
-}
-
-// createFileAttachments reads files from the filesystem and creates Graph API
-// attachment objects for email messages. Files are base64-encoded automatically.
-//
-// Parameters:
-//   - filePaths: Slice of absolute or relative file paths to attach
-//   - config: Application configuration for verbose logging
-//
-// Returns:
-//   - []models.Attachmentable: Slice of attachment objects ready for Graph API
-//   - error: Error if files cannot be read or no valid attachments processed
-//
-// MIME types are detected automatically based on file extensions. If detection
-// fails, files are treated as "application/octet-stream".
-//
-// Note: Large files may cause performance issues. Consider file size limits
-// based on Exchange Online restrictions (typically 150MB for attachments).
-func createFileAttachments(filePaths []string, config *Config) ([]models.Attachmentable, error) {
-    // ... existing implementation
 }
 ```
 
@@ -1094,8 +681,7 @@ func handleGraphAPIError(err error, logger *Logger) error {
 **Effort:** Low (30 minutes)
 **Impact:** Low (affects only high-volume scenarios)
 
-// Integration tests require real credentials set via environment variables
-// Run with: go test -tags=integration -v
+---
 
 ## Summary by Priority
 
@@ -1111,7 +697,7 @@ func handleGraphAPIError(err error, logger *Logger) error {
 **Estimated Total Effort:** 12-18 hours
 **Expected Impact:** Improved reliability, security, and maintainability
 
-    ctx := context.Background()
+---
 
 ## Implementation Roadmap
 
@@ -1133,16 +719,6 @@ func handleGraphAPIError(err error, logger *Logger) error {
 
 6. ✅ Add integration test suite (#5)
 7. ✅ Implement auto-completion support (#6)
-
-**Benefits:**
-- Tests real Graph API interactions
-- Validates authentication methods
-- Catches API changes or SDK updates
-- Provides confidence in production behavior
-
-**Priority:** Low (optional)
-**Impact:** Integration testing, API validation
-**Note:** Requires real credentials and generates actual API calls
 
 ---
 
