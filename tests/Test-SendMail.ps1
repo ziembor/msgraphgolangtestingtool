@@ -80,7 +80,7 @@ Describe "Send Mail Tests" {
 
             # Check for CSV log file in temp directory
             $dateStr = Get-Date -Format "yyyy-MM-dd"
-            $csvPath = Join-Path $env:TEMP "_msgraphgolangtestingtool_$dateStr.csv"
+            $csvPath = Join-Path $env:TEMP "_msgraphgolangtestingtool_sendmail_$dateStr.csv"
 
             Write-Host "Checking for CSV log: $csvPath" -ForegroundColor Cyan
             Test-Path $csvPath | Should -Be $true
