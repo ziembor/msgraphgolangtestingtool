@@ -271,7 +271,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 Write-Header "Step 5: Review Changes"
 Write-Info "The following changes will be made:"
 Write-Host "  • src\VERSION: $currentVersion → $newVersion (embedded via go:embed)"
-Write-Host "  • $changelogEntryPath: $(if (Test-Path $changelogEntryPath) { "Updated" } else { "Created" })"
+Write-Host "  • ${changelogEntryPath}: $(if (Test-Path $changelogEntryPath) { "Updated" } else { "Created" })"
 Write-Host "`nCommit message:"
 Write-Host "------------------------"
 Write-Host $commitMessage
