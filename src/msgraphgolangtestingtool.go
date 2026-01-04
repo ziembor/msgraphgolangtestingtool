@@ -13,9 +13,11 @@ import (
 	"log"
 	"mime"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -193,6 +195,20 @@ func main() {
 }
 
 func run() error {
+	// Setup signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle interrupt signals (Ctrl+C, SIGTERM)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Println("\n\nReceived interrupt signal. Shutting down gracefully...")
+		cancel()
+	}()
+
 	// 1. Define Command Line Parameters
 
 	showVersion := flag.Bool("version", false, "Show version information")
@@ -320,7 +336,6 @@ func run() error {
 
 	// Get and display token information if verbose
 	if config.VerboseMode {
-		ctx := context.Background()
 		token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
 			Scopes: []string{"https://graph.microsoft.com/.default"},
 		})
@@ -341,8 +356,6 @@ func run() error {
 		logVerbose(config.VerboseMode, "Graph SDK client initialized successfully")
 		logVerbose(config.VerboseMode, "Target scope: https://graph.microsoft.com/.default")
 	}
-
-	ctx := context.Background()
 
 	// 3. Execute Actions based on flags
 	switch *action {
