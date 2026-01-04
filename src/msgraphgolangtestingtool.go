@@ -137,6 +137,35 @@ func (l *CSVLogger) Close() error {
 	return nil
 }
 
+// stringSlice is a custom flag type for comma-separated lists
+type stringSlice []string
+
+// String implements the flag.Value interface
+func (s *stringSlice) String() string {
+	if s == nil {
+		return ""
+	}
+	return strings.Join(*s, ",")
+}
+
+// Set implements the flag.Value interface
+func (s *stringSlice) Set(value string) error {
+	if value == "" {
+		*s = nil
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	var result []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	*s = result
+	return nil
+}
+
 // applyEnvVars applies environment variable values to flags that weren't explicitly set via command line
 func applyEnvVars(envMap map[string]*string) {
 	// Track which flags were explicitly set via command line
@@ -154,13 +183,9 @@ func applyEnvVars(envMap map[string]*string) {
 		"pfxpass":        "MSGRAPHPFXPASS",
 		"thumbprint":     "MSGRAPHTHUMBPRINT",
 		"mailbox":        "MSGRAPHMAILBOX",
-		"to":             "MSGRAPHTO",
-		"cc":             "MSGRAPHCC",
-		"bcc":            "MSGRAPHBCC",
 		"subject":        "MSGRAPHSUBJECT",
 		"body":           "MSGRAPHBODY",
 		"bodyHTML":       "MSGRAPHBODYHTML",
-		"attachments":    "MSGRAPHATTACHMENTS",
 		"invite-subject": "MSGRAPHINVITESUBJECT",
 		"start":          "MSGRAPHSTART",
 		"end":            "MSGRAPHEND",
@@ -184,6 +209,24 @@ func applyEnvVars(envMap map[string]*string) {
 			if envValue := os.Getenv(envName); envValue != "" {
 				*flagPtr = envValue
 			}
+		}
+	}
+}
+
+// applyEnvVarsToSlice applies environment variable values to stringSlice flags
+func applyEnvVarsToSlice(flagName string, slice *stringSlice, envName string) {
+	// Check if flag was explicitly provided via command line
+	flagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == flagName {
+			flagProvided = true
+		}
+	})
+
+	// If flag was not provided via command line, check environment variable
+	if !flagProvided {
+		if envValue := os.Getenv(envName); envValue != "" {
+			slice.Set(envValue)
 		}
 	}
 }
@@ -222,16 +265,17 @@ func run() error {
 	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store")
 	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address")
 
-	// Recipient flags
-	toRaw := flag.String("to", "", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty)")
-	ccRaw := flag.String("cc", "", "Comma-separated list of CC recipients")
-	bccRaw := flag.String("bcc", "", "Comma-separated list of BCC recipients")
+	// Recipient flags (using custom stringSlice type)
+	var to, cc, bcc, attachmentFiles stringSlice
+	flag.Var(&to, "to", "Comma-separated list of TO recipients (optional, defaults to mailbox if empty)")
+	flag.Var(&cc, "cc", "Comma-separated list of CC recipients")
+	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients")
 
 	// Email content flags
 	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email")
 	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text)")
 	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided)")
-	attachments := flag.String("attachments", "", "Comma-separated list of file paths to attach")
+	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach")
 
 	// Calendar invite flags
 	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite")
@@ -270,19 +314,21 @@ func run() error {
 		"MSGRAPHPFXPASS":       pfxPass,
 		"MSGRAPHTHUMBPRINT":    thumbprint,
 		"MSGRAPHMAILBOX":       mailbox,
-		"MSGRAPHTO":            toRaw,
-		"MSGRAPHCC":            ccRaw,
-		"MSGRAPHBCC":           bccRaw,
 		"MSGRAPHSUBJECT":       subject,
 		"MSGRAPHBODY":          body,
 		"MSGRAPHBODYHTML":      bodyHTML,
-		"MSGRAPHATTACHMENTS":   attachments,
 		"MSGRAPHINVITESUBJECT": inviteSubject,
 		"MSGRAPHSTART":         startTime,
 		"MSGRAPHEND":           endTime,
 		"MSGRAPHACTION":        action,
 		"MSGRAPHPROXY":         proxyURL,
 	})
+
+	// Apply environment variables for stringSlice flags
+	applyEnvVarsToSlice("to", &to, "MSGRAPHTO")
+	applyEnvVarsToSlice("cc", &cc, "MSGRAPHCC")
+	applyEnvVarsToSlice("bcc", &bcc, "MSGRAPHBCC")
+	applyEnvVarsToSlice("attachments", &attachmentFiles, "MSGRAPHATTACHMENTS")
 
 	// Apply MSGRAPHCOUNT environment variable if flag wasn't provided
 	countFlagProvided := false
@@ -301,7 +347,7 @@ func run() error {
 
 	// Print verbose configuration if enabled
 	if config.VerboseMode {
-		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, *toRaw, *ccRaw, *bccRaw, *subject, *body, *bodyHTML, *attachments, *inviteSubject, *startTime, *endTime)
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime)
 	}
 
 	// Validation
@@ -365,11 +411,6 @@ func run() error {
 			return fmt.Errorf("failed to list events: %w", err)
 		}
 	case ActionSendMail:
-		to := parseList(*toRaw)
-		cc := parseList(*ccRaw)
-		bcc := parseList(*bccRaw)
-		attachmentFiles := parseList(*attachments)
-
 		// If no recipients specified at all, default 'to' to the sender mailbox
 		if len(to) == 0 && len(cc) == 0 && len(bcc) == 0 {
 			to = []string{*mailbox}
@@ -387,21 +428,6 @@ func run() error {
 	}
 
 	return nil
-}
-
-func parseList(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	var result []string
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
 }
 
 func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config) (azcore.TokenCredential, error) {
@@ -950,14 +976,19 @@ func printTokenInfo(token azcore.AccessToken) {
 	timeUntilExpiry := time.Until(token.ExpiresOn)
 	fmt.Printf("Valid for: %s\n", timeUntilExpiry.Round(time.Second))
 
-	// Show truncated token (first and last 10 characters for verification)
+	// Show truncated token (always truncate for security, even short tokens)
 	tokenStr := token.Token
 	if len(tokenStr) > 40 {
 		fmt.Printf("Token (truncated): %s...%s\n", tokenStr[:20], tokenStr[len(tokenStr)-20:])
-		fmt.Printf("Token length: %d characters\n", len(tokenStr))
 	} else {
-		fmt.Printf("Token: %s\n", tokenStr)
+		// Even short tokens should be masked for security
+		maxLen := 10
+		if len(tokenStr) < maxLen {
+			maxLen = len(tokenStr)
+		}
+		fmt.Printf("Token (truncated): %s...\n", tokenStr[:maxLen])
 	}
+	fmt.Printf("Token length: %d characters\n", len(tokenStr))
 
 	fmt.Println()
 }
