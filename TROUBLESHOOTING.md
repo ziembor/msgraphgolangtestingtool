@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide helps diagnose and resolve common issues when using the Microsoft Graph GoLang Testing Tool.
+This guide helps diagnose and resolve common issues when using the Microsoft Graph EXO Mails/Calendar Golang Testing Tool.
 
 ---
 

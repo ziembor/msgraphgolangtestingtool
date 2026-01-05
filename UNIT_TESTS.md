@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the Go unit tests for the Microsoft Graph GoLang Testing Tool. The test suite provides comprehensive coverage of helper functions, validation logic, data transformation, and utility functions.
+This document describes the Go unit tests for the Microsoft Graph EXO Mails/Calendar Golang Testing Tool. The test suite provides comprehensive coverage of helper functions, validation logic, data transformation, and utility functions.
 
 **Test Coverage:** 24.6% of statements (46 passing tests)
 

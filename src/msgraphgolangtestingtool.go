@@ -135,7 +135,7 @@ func applyEnvVarsToSlice(flagName string, slice *stringSlice, envName string) {
 func parseAndConfigureFlags() *Config {
 	// Customize help output
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Microsoft Graph GoLang Testing Tool - Version %s\n\n", version)
+		fmt.Fprintf(flag.CommandLine.Output(), "Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Version %s\n\n", version)
 		fmt.Fprintf(flag.CommandLine.Output(), "Repository: https://github.com/ziembor/msgraphgolangtestingtool\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(flag.CommandLine.Output(), "Options:\n")
@@ -394,7 +394,7 @@ func run() error {
 
 	// 3. Handle version flag early exit
 	if config.ShowVersion {
-		fmt.Printf("Microsoft Graph Golang Testing Tool - Version %s\n", version)
+		fmt.Printf("Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Version %s\n", version)
 		return nil
 	}
 

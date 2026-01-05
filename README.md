@@ -1,4 +1,4 @@
-# Microsoft Graph GoLang Testing Tool
+# Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 
 A portable, single-binary CLI tool for interacting with Microsoft Graph API to manage Exchange Online emails and calendar events.
 
@@ -6,7 +6,7 @@ A portable, single-binary CLI tool for interacting with Microsoft Graph API to m
 
 ## Purpose
 
-This tool provides a lightweight, standalone executable for testing and managing Microsoft Graph API operations on Exchange Online mailboxes without requiring additional runtimes or dependencies. Designed for Windows environments, it supports multiple authentication methods and automatically logs all operations to CSV files.
+This tool provides a lightweight, standalone executable for testing and managing Microsoft Graph API operations on Exchange Online mailboxes without requiring additional runtimes or dependencies. Cross-platform support for Windows, Linux, and macOS with multiple authentication methods and automatic CSV logging of all operations.
 
 ## Key Features
 

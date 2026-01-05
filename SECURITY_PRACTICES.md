@@ -1,6 +1,6 @@
 # Security Best Practices
 
-This guide outlines security best practices for using the Microsoft Graph GoLang Testing Tool in production environments.
+This guide outlines security best practices for using the Microsoft Graph EXO Mails/Calendar Golang Testing Tool in production environments.
 
 ---
 

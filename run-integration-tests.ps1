@@ -1,4 +1,4 @@
-# PowerShell script to run integration tests for Microsoft Graph GoLang Testing Tool
+# PowerShell script to run integration tests for Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 #
 # This script:
 # 1. Checks for required environment variables
@@ -24,7 +24,7 @@ function Write-Info { Write-Host $args -ForegroundColor Cyan }
 # Banner
 Write-Host ""
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "Integration Test Runner - Microsoft Graph GoLang Testing Tool" -ForegroundColor Cyan
+Write-Host "Integration Test Runner - Microsoft Graph EXO Mails/Calendar Golang Testing Tool" -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host ""
 

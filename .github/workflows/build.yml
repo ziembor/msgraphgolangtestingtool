@@ -13,7 +13,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
             binary_name: msgraphgolangtestingtool.exe
@@ -23,6 +23,10 @@ jobs:
             binary_name: msgraphgolangtestingtool
             artifact_name: msgraphgolangtestingtool-linux
             zip_name: msgraphgolangtestingtool-linux.zip
+          - os: macos-latest
+            binary_name: msgraphgolangtestingtool
+            artifact_name: msgraphgolangtestingtool-macos
+            zip_name: msgraphgolangtestingtool-macos.zip
 
     steps:
     - uses: actions/checkout@v4
@@ -38,6 +42,12 @@ jobs:
 
     - name: Build (Linux)
       if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd src
+        go build -o ../${{ matrix.binary_name }}
+
+    - name: Build (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
         cd src
         go build -o ../${{ matrix.binary_name }}
@@ -64,6 +74,17 @@ jobs:
           exit 1
         fi
 
+    - name: Verify build output (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        if [ -f "${{ matrix.binary_name }}" ]; then
+          echo "Build successful: ${{ matrix.binary_name }} found"
+          ls -lh ${{ matrix.binary_name }}
+        else
+          echo "Build failed: ${{ matrix.binary_name }} not found"
+          exit 1
+        fi
+
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
@@ -73,6 +94,13 @@ jobs:
 
     - name: Create ZIP archive (Linux)
       if: matrix.os == 'ubuntu-latest'
+      run: |
+        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }} EXAMPLES.md LICENSE README.md
+        echo "Created ZIP archive: ${{ matrix.zip_name }}"
+        ls -lh ${{ matrix.zip_name }}
+
+    - name: Create ZIP archive (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
         zip ${{ matrix.zip_name }} ${{ matrix.binary_name }} EXAMPLES.md LICENSE README.md
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
@@ -89,7 +117,7 @@ jobs:
       with:
         files: ${{ matrix.zip_name }}
         body: |
-          ## Microsoft Graph GoLang Testing Tool
+          ## Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 
           Portable CLI tool for Microsoft Graph API operations.
 
@@ -113,13 +141,23 @@ jobs:
           3. Make it executable: `chmod +x msgraphgolangtestingtool`
           4. Run: `./msgraphgolangtestingtool`
 
+          **macOS:**
+          1. Download `msgraphgolangtestingtool-macos.zip`
+          2. Extract the ZIP file: `unzip msgraphgolangtestingtool-macos.zip`
+          3. Make it executable: `chmod +x msgraphgolangtestingtool`
+          4. Run: `./msgraphgolangtestingtool`
+
+          **Note for macOS:** If you see "cannot be opened because the developer cannot be verified", you may need to:
+          - Right-click the binary and select "Open", or
+          - Run: `xattr -d com.apple.quarantine msgraphgolangtestingtool`
+
           ### Quick Start
           **Windows:**
           ```powershell
           .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
           ```
 
-          **Linux:**
+          **Linux / macOS:**
           ```bash
           ./msgraphgolangtestingtool -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
           ```

@@ -1,4 +1,4 @@
-# Interactive Release Script for Microsoft Graph GoLang Testing Tool
+# Interactive Release Script for Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 # This script guides you through creating a new release that triggers GitHub Actions
 #
 # QUICK REFERENCE:

@@ -1,4 +1,4 @@
-// Package main provides shared business logic for the Microsoft Graph GoLang Testing Tool.
+// Package main provides shared business logic for the Microsoft Graph EXO Mails/Calendar Golang Testing Tool.
 // This file contains all code shared between the main CLI application and integration tests.
 //
 // NO BUILD TAGS - This file is compiled in all build modes.
