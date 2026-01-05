@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestValidateFilePath tests the validateFilePath function with various inputs
@@ -257,6 +258,82 @@ func TestValidateConfiguration_AttachmentFilesValidation(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "directory traversal",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfiguration(tt.config)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConfiguration() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && err != nil {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("validateConfiguration() error = %v, should contain %q", err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateGetScheduleAction tests getschedule-specific validation
+func TestValidateGetScheduleAction(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid getschedule with one recipient",
+			config: &Config{
+				TenantID: "12345678-1234-1234-1234-123456789012",
+				ClientID: "abcdefab-1234-1234-1234-abcdefabcdef",
+				Mailbox:  "organizer@example.com",
+				Secret:   "test-secret",
+				Action:   ActionGetSchedule,
+				To:       stringSlice{"recipient@example.com"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "getschedule without recipient",
+			config: &Config{
+				TenantID: "12345678-1234-1234-1234-123456789012",
+				ClientID: "abcdefab-1234-1234-1234-abcdefabcdef",
+				Mailbox:  "organizer@example.com",
+				Secret:   "test-secret",
+				Action:   ActionGetSchedule,
+				To:       stringSlice{},
+			},
+			wantErr: true,
+			errMsg:  "getschedule action requires -to parameter",
+		},
+		{
+			name: "getschedule with multiple recipients",
+			config: &Config{
+				TenantID: "12345678-1234-1234-1234-123456789012",
+				ClientID: "abcdefab-1234-1234-1234-abcdefabcdef",
+				Mailbox:  "organizer@example.com",
+				Secret:   "test-secret",
+				Action:   ActionGetSchedule,
+				To:       stringSlice{"recipient1@example.com", "recipient2@example.com"},
+			},
+			wantErr: true,
+			errMsg:  "only supports checking one recipient at a time",
+		},
+		{
+			name: "invalid action name",
+			config: &Config{
+				TenantID: "12345678-1234-1234-1234-123456789012",
+				ClientID: "abcdefab-1234-1234-1234-abcdefabcdef",
+				Mailbox:  "test@example.com",
+				Secret:   "test-secret",
+				Action:   "invalidaction",
+			},
+			wantErr: true,
+			errMsg:  "invalid action",
 		},
 	}
 
@@ -859,4 +936,129 @@ func TestLogVerbose_NilArgs(t *testing.T) {
 	// Should not panic with nil args
 	logVerbose(true, "Test with no args")
 	logVerbose(false, "Test with no args")
+}
+
+// TestInterpretAvailability tests the interpretAvailability function
+func TestInterpretAvailability(t *testing.T) {
+	tests := []struct {
+		name     string
+		view     string
+		expected string
+	}{
+		{
+			name:     "Free (0)",
+			view:     "0",
+			expected: "Free",
+		},
+		{
+			name:     "Tentative (1)",
+			view:     "1",
+			expected: "Tentative",
+		},
+		{
+			name:     "Busy (2)",
+			view:     "2",
+			expected: "Busy",
+		},
+		{
+			name:     "Out of Office (3)",
+			view:     "3",
+			expected: "Out of Office",
+		},
+		{
+			name:     "Working Elsewhere (4)",
+			view:     "4",
+			expected: "Working Elsewhere",
+		},
+		{
+			name:     "Unknown code (9)",
+			view:     "9",
+			expected: "Unknown (9)",
+		},
+		{
+			name:     "Empty view",
+			view:     "",
+			expected: "Unknown (empty response)",
+		},
+		{
+			name:     "Multi-character view (takes first)",
+			view:     "0000",
+			expected: "Free",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := interpretAvailability(tt.view)
+			if result != tt.expected {
+				t.Errorf("interpretAvailability(%q) = %q, want %q", tt.view, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestAddWorkingDays tests the addWorkingDays function that calculates working days
+func TestAddWorkingDays(t *testing.T) {
+	tests := []struct {
+		name     string
+		start    time.Time
+		days     int
+		expected time.Time
+	}{
+		{
+			name:     "Thursday to Friday",
+			start:    time.Date(2026, 1, 1, 14, 0, 0, 0, time.UTC), // Thursday
+			days:     1,
+			expected: time.Date(2026, 1, 2, 14, 0, 0, 0, time.UTC), // Friday
+		},
+		{
+			name:     "Friday to Monday (skip weekend)",
+			start:    time.Date(2026, 1, 2, 14, 0, 0, 0, time.UTC), // Friday
+			days:     1,
+			expected: time.Date(2026, 1, 5, 14, 0, 0, 0, time.UTC), // Monday
+		},
+		{
+			name:     "Saturday to Monday",
+			start:    time.Date(2026, 1, 3, 14, 0, 0, 0, time.UTC), // Saturday
+			days:     1,
+			expected: time.Date(2026, 1, 5, 14, 0, 0, 0, time.UTC), // Monday
+		},
+		{
+			name:     "Sunday to Monday",
+			start:    time.Date(2026, 1, 4, 14, 0, 0, 0, time.UTC), // Sunday
+			days:     1,
+			expected: time.Date(2026, 1, 5, 14, 0, 0, 0, time.UTC), // Monday
+		},
+		{
+			name:     "Add 5 working days (crosses weekend)",
+			start:    time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC), // Thursday
+			days:     5,
+			expected: time.Date(2026, 1, 8, 9, 0, 0, 0, time.UTC), // Next Thursday
+		},
+		{
+			name:     "Zero days returns same time",
+			start:    time.Date(2026, 1, 1, 12, 30, 45, 0, time.UTC),
+			days:     0,
+			expected: time.Date(2026, 1, 1, 12, 30, 45, 0, time.UTC),
+		},
+		{
+			name:     "Monday to Tuesday",
+			start:    time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC), // Monday
+			days:     1,
+			expected: time.Date(2026, 1, 6, 10, 0, 0, 0, time.UTC), // Tuesday
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := addWorkingDays(tt.start, tt.days)
+			if !result.Equal(tt.expected) {
+				t.Errorf("addWorkingDays(%v, %d) = %v, want %v",
+					tt.start.Format("Mon 2006-01-02 15:04:05"),
+					tt.days,
+					result.Format("Mon 2006-01-02 15:04:05"),
+					tt.expected.Format("Mon 2006-01-02 15:04:05"))
+			}
+		})
+	}
 }

@@ -37,10 +37,11 @@ var version = strings.TrimSpace(versionRaw)
 
 // Action constants
 const (
-	ActionGetEvents  = "getevents"
-	ActionSendMail   = "sendmail"
-	ActionSendInvite = "sendinvite"
-	ActionGetInbox   = "getinbox"
+	ActionGetEvents    = "getevents"
+	ActionSendMail     = "sendmail"
+	ActionSendInvite   = "sendinvite"
+	ActionGetInbox     = "getinbox"
+	ActionGetSchedule  = "getschedule"
 )
 
 // Status constants
@@ -55,12 +56,11 @@ const (
 // testability.
 type Config struct {
 	// Core configuration
-	ShowVersion    bool   // Display version information and exit
-	CompletionShell string // Generate completion script for specified shell (bash, powershell) and exit
-	TenantID       string // Azure AD Tenant ID (GUID format)
-	ClientID       string // Application (Client) ID (GUID format)
-	Mailbox        string // Target user email address
-	Action         string // Operation to perform (getevents, sendmail, sendinvite, getinbox)
+	ShowVersion bool   // Display version information and exit
+	TenantID    string // Azure AD Tenant ID (GUID format)
+	ClientID    string // Application (Client) ID (GUID format)
+	Mailbox     string // Target user email address
+	Action      string // Operation to perform (getevents, sendmail, sendinvite, getinbox, getschedule)
 
 	// Authentication configuration (mutually exclusive)
 	Secret     string // Client Secret for authentication
@@ -244,6 +244,8 @@ func (l *CSVLogger) writeHeader() {
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "Start Time", "End Time", "Event ID"}
 	case ActionGetInbox:
 		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Subject", "From", "To", "Received DateTime"}
+	case ActionGetSchedule:
+		header = []string{"Timestamp", "Action", "Status", "Mailbox", "Recipient", "Check DateTime", "Availability View"}
 	default:
 		header = []string{"Timestamp", "Action", "Status", "Details"}
 	}
@@ -990,6 +992,156 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	return nil
 }
 
+// interpretAvailability converts Microsoft Graph availability view codes to human-readable status.
+// Availability view codes:
+//   - "0" = Free
+//   - "1" = Tentative
+//   - "2" = Busy
+//   - "3" = Out of Office
+//   - "4" = Working Elsewhere
+//
+// The function returns the interpreted status string or "Unknown" if the code is unrecognized.
+func interpretAvailability(view string) string {
+	if len(view) == 0 {
+		return "Unknown (empty response)"
+	}
+
+	// Get the first character (representing the time slot status)
+	code := string(view[0])
+
+	switch code {
+	case "0":
+		return "Free"
+	case "1":
+		return "Tentative"
+	case "2":
+		return "Busy"
+	case "3":
+		return "Out of Office"
+	case "4":
+		return "Working Elsewhere"
+	default:
+		return fmt.Sprintf("Unknown (%s)", code)
+	}
+}
+
+// checkAvailability checks the recipient's availability for the next working day at 12:00 UTC.
+// It uses the Microsoft Graph getSchedule API to query availability for a 1-hour window.
+func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, recipient string, config *Config, logger *CSVLogger) error {
+	// Calculate next working day
+	now := time.Now().UTC()
+	nextWorkingDay := addWorkingDays(now, 1)
+
+	// Set time to 12:00 UTC (noon)
+	checkDateTime := time.Date(
+		nextWorkingDay.Year(),
+		nextWorkingDay.Month(),
+		nextWorkingDay.Day(),
+		12, 0, 0, 0,
+		time.UTC,
+	)
+
+	// End time is 1 hour later (13:00 UTC)
+	endDateTime := checkDateTime.Add(1 * time.Hour)
+
+	logVerbose(config.VerboseMode, "Checking availability for %s on %s (12:00-13:00 UTC)", recipient, checkDateTime.Format("2006-01-02"))
+
+	// Create DateTimeTimeZone objects for Graph API
+	startTimeZone := models.NewDateTimeTimeZone()
+	startTimeZone.SetDateTime(pointerTo(checkDateTime.Format(time.RFC3339)))
+	startTimeZone.SetTimeZone(pointerTo("UTC"))
+
+	endTimeZone := models.NewDateTimeTimeZone()
+	endTimeZone.SetDateTime(pointerTo(endDateTime.Format(time.RFC3339)))
+	endTimeZone.SetTimeZone(pointerTo("UTC"))
+
+	// Create request body
+	requestBody := users.NewItemCalendarGetSchedulePostRequestBody()
+	requestBody.SetSchedules([]string{recipient})
+	requestBody.SetStartTime(startTimeZone)
+	requestBody.SetEndTime(endTimeZone)
+	interval := int32(60) // 60-minute intervals
+	requestBody.SetAvailabilityViewInterval(&interval)
+
+	logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/calendar/getSchedule", mailbox)
+
+	// Execute API call with retry logic
+	var scheduleInfo []models.ScheduleInformationable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		response, apiErr := client.Users().ByUserId(mailbox).Calendar().GetSchedule().Post(ctx, requestBody, nil)
+		if apiErr == nil && response != nil {
+			scheduleInfo = response.GetValue()
+		}
+		return apiErr
+	})
+
+	if err != nil {
+		// Enrich error with rate limit and service error details
+		enrichedErr := enrichGraphAPIError(err, logger, "checkAvailability")
+		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %v", enrichedErr), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
+		if logger != nil {
+			logger.WriteRow(csvRow)
+		}
+		return fmt.Errorf("error checking availability for %s: %w", recipient, enrichedErr)
+	}
+
+	logVerbose(config.VerboseMode, "API response received: %d schedule(s)", len(scheduleInfo))
+
+	// Parse availability view
+	if len(scheduleInfo) == 0 {
+		errMsg := "no schedule information returned"
+		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %s", errMsg), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
+		if logger != nil {
+			logger.WriteRow(csvRow)
+		}
+		return fmt.Errorf("no schedule information returned")
+	}
+
+	// Get availability view from first schedule
+	info := scheduleInfo[0]
+	availabilityView := ""
+	if info.GetAvailabilityView() != nil {
+		availabilityView = *info.GetAvailabilityView()
+	}
+
+	if availabilityView == "" {
+		errMsg := "empty availability view returned"
+		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %s", errMsg), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
+		if logger != nil {
+			logger.WriteRow(csvRow)
+		}
+		return fmt.Errorf("empty availability view returned")
+	}
+
+	// Interpret availability
+	status := interpretAvailability(availabilityView)
+
+	// Display results
+	fmt.Printf("Availability Check Results:\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("Organizer:     %s\n", mailbox)
+	fmt.Printf("Recipient:     %s\n", recipient)
+	fmt.Printf("Check Date:    %s\n", checkDateTime.Format("2006-01-02"))
+	fmt.Printf("Check Time:    12:00-13:00 UTC\n")
+	fmt.Printf("Status:        %s\n", status)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	logVerbose(config.VerboseMode, "Availability view: %s → %s", availabilityView, status)
+
+	// Log to CSV
+	if logger != nil {
+		csvRow := []string{ActionGetSchedule, StatusSuccess, mailbox, recipient, checkDateTime.Format(time.RFC3339), availabilityView}
+		logger.WriteRow(csvRow)
+	}
+
+	return nil
+}
+
+// pointerTo is a generic helper function to create pointers to values
+func pointerTo[T any](v T) *T {
+	return &v
+}
+
 // validateEmail performs basic email format validation by checking for the presence
 // of an @ symbol and ensuring both local-part and domain are non-empty.
 func validateEmail(email string) error {
@@ -1053,6 +1205,33 @@ func parseFlexibleTime(timeStr string) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("invalid time format (expected RFC3339 like '2026-01-15T14:00:00Z' or PowerShell sortable like '2026-01-15T14:00:00')")
+}
+
+// addWorkingDays adds a specified number of working days (Monday-Friday) to the given time.
+// It skips weekends (Saturday and Sunday) and returns the resulting time with the same
+// time-of-day preserved. This function is used for scheduling operations that must fall
+// on business days.
+//
+// Example: If t is Friday 2026-01-02 at 14:00, addWorkingDays(t, 1) returns Monday 2026-01-05 at 14:00
+func addWorkingDays(t time.Time, days int) time.Time {
+	if days <= 0 {
+		return t
+	}
+
+	result := t
+	daysAdded := 0
+
+	for daysAdded < days {
+		result = result.Add(24 * time.Hour)
+
+		// Check if this is a working day (Monday=1, Friday=5)
+		weekday := result.Weekday()
+		if weekday != time.Saturday && weekday != time.Sunday {
+			daysAdded++
+		}
+	}
+
+	return result
 }
 
 // validateRFC3339Time validates that a string matches RFC3339 or PowerShell sortable timestamp format
@@ -1197,13 +1376,24 @@ func validateConfiguration(config *Config) error {
 
 	// Validate action
 	validActions := map[string]bool{
-		ActionGetEvents:  true,
-		ActionSendMail:   true,
-		ActionSendInvite: true,
-		ActionGetInbox:   true,
+		ActionGetEvents:   true,
+		ActionSendMail:    true,
+		ActionSendInvite:  true,
+		ActionGetInbox:    true,
+		ActionGetSchedule: true,
 	}
 	if !validActions[config.Action] {
-		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", config.Action)
+		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox, getschedule)", config.Action)
+	}
+
+	// Validate getschedule-specific requirements
+	if config.Action == ActionGetSchedule {
+		if len(config.To) == 0 {
+			return fmt.Errorf("getschedule action requires -to parameter (recipient email address)")
+		}
+		if len(config.To) > 1 {
+			return fmt.Errorf("getschedule action only supports checking one recipient at a time (got %d recipients)", len(config.To))
+		}
 	}
 
 	return nil

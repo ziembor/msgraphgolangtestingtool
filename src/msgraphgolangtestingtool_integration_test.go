@@ -106,6 +106,31 @@ func TestIntegration_ListInbox(t *testing.T) {
 	t.Log("✅ Successfully retrieved inbox messages")
 }
 
+// TestIntegration_CheckAvailability tests checking recipient availability
+func TestIntegration_CheckAvailability(t *testing.T) {
+	config := loadTestConfig(t)
+	ctx := context.Background()
+
+	client, err := setupGraphClient(ctx, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to create Graph client: %v", err)
+	}
+
+	// Use the mailbox as the recipient (check own availability)
+	recipient := config.Mailbox
+	t.Logf("Checking availability for %s (next working day at 12:00 UTC)", recipient)
+
+	// Set the To field for validation
+	config.To = []string{recipient}
+
+	err = checkAvailability(ctx, client, config.Mailbox, recipient, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to check availability: %v", err)
+	}
+
+	t.Log("✅ Successfully checked availability")
+}
+
 // TestIntegration_SendEmail tests sending an email (sends to self)
 func TestIntegration_SendEmail(t *testing.T) {
 	if os.Getenv("MSGRAPH_INTEGRATION_WRITE") != "true" {

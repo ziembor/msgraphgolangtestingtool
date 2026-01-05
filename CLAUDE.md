@@ -22,6 +22,7 @@ The tool is designed for **minimal external dependencies** — it compiles into 
   * **List Events:** Retrieve upcoming calendar events for a specific user.
   * **Create Invite:** Create and send calendar meeting invitations.
   * **List Inbox:** Retrieve the newest 10 messages from inbox with sender, recipients, subject, and received date.
+  * **Check Availability:** Check recipient availability for next working day at 12:00 UTC (returns Free/Busy status).
  **Network:**
   * **Proxy Support:** Route traffic through HTTP/HTTPS proxies via flag or environment variable.
 * **CSV Logging:**
@@ -58,7 +59,7 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 | `-tenantid` | The Azure Directory (Tenant) ID. | **Yes** |
 | `-clientid` | The Application (Client) ID. | **Yes** |
 | `-mailbox` | The target user email address to act upon (sender). | **Yes** |
-| `-action` | Operation to perform: `getevents`, `sendmail`, `sendinvite`, or `getinbox`. | No (default: `getinbox`) |
+| `-action` | Operation to perform: `getevents`, `sendmail`, `sendinvite`, `getinbox`, or `getschedule`. | No (default: `getinbox`) |
 | **Authentication** | | |
 | `-secret` | The Client Secret. | Use one Auth method |
 | `-pfx` | Path to a local `.pfx` certificate file. | Use one Auth method |
@@ -196,6 +197,22 @@ $env:MSGRAPHCOUNT = "10"
 $env:MSGRAPHPROXY = "http://10.0.0.1:8080"
 .\msgraphgolangtestingtool.exe ...
 ```
+
+#### 7. Check Recipient Availability for Next Working Day
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid "1111-2222-3333" `
+                 -clientid "aaaa-bbbb-cccc" `
+                 -secret "MySecretValue" `
+                 -mailbox "organizer@example.com" `
+                 -action getschedule `
+                 -to "recipient@example.com"
+```
+
+This action automatically:
+- Calculates the next working day (Monday-Friday, skips weekends)
+- Checks availability for 12:00-13:00 UTC
+- Returns Free/Busy status
 
 ## Project Overview
 

@@ -31,14 +31,16 @@ import (
 
 // IntegrationTestResults holds the results of all integration tests
 type IntegrationTestResults struct {
-	GetEventsSuccess  bool
-	GetEventsError    error
-	SendMailSuccess   bool
-	SendMailError     error
-	SendInviteSuccess bool
-	SendInviteError   error
-	GetInboxSuccess   bool
-	GetInboxError     error
+	GetEventsSuccess    bool
+	GetEventsError      error
+	SendMailSuccess     bool
+	SendMailError       error
+	SendInviteSuccess   bool
+	SendInviteError     error
+	GetInboxSuccess     bool
+	GetInboxError       error
+	GetScheduleSuccess  bool
+	GetScheduleError    error
 }
 
 func main() {
@@ -85,11 +87,12 @@ func main() {
 	displayTestResult("Send Mail", results.SendMailSuccess, results.SendMailError)
 	displayTestResult("Send Invite", results.SendInviteSuccess, results.SendInviteError)
 	displayTestResult("Get Inbox", results.GetInboxSuccess, results.GetInboxError)
+	displayTestResult("Get Schedule", results.GetScheduleSuccess, results.GetScheduleError)
 	fmt.Println("=================================================================")
 
 	// Calculate pass rate
 	passed := 0
-	total := 4
+	total := 5
 	if results.GetEventsSuccess {
 		passed++
 	}
@@ -100,6 +103,9 @@ func main() {
 		passed++
 	}
 	if results.GetInboxSuccess {
+		passed++
+	}
+	if results.GetScheduleSuccess {
 		passed++
 	}
 
@@ -203,6 +209,13 @@ func runIntegrationTests(config *Config) *IntegrationTestResults {
 	results.GetInboxSuccess, results.GetInboxError = testGetInbox(ctx, client, config)
 	fmt.Println()
 
+	// Test 5: Get Schedule
+	fmt.Println("─────────────────────────────────────────────────────────────────")
+	fmt.Println("Test 5: Check Availability (Get Schedule)")
+	fmt.Println("─────────────────────────────────────────────────────────────────")
+	results.GetScheduleSuccess, results.GetScheduleError = testGetSchedule(ctx, client, config)
+	fmt.Println()
+
 	return results
 }
 
@@ -270,8 +283,36 @@ func testGetInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, co
 	return true, nil
 }
 
+// testGetSchedule tests checking recipient availability
+func testGetSchedule(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config) (bool, error) {
+	// Use the mailbox as the recipient (check own availability)
+	recipient := config.Mailbox
+	fmt.Printf("Checking availability for %s (next working day at 12:00 UTC)...\n", recipient)
+
+	// Temporarily set the To field for this test
+	originalTo := config.To
+	config.To = []string{recipient}
+	defer func() { config.To = originalTo }()
+
+	err := checkAvailability(ctx, client, config.Mailbox, recipient, config, nil)
+
+	if err != nil {
+		fmt.Printf("❌ FAILED: %v\n", err)
+		return false, err
+	}
+
+	fmt.Println("✅ PASSED: Successfully checked availability")
+	return true, nil
+}
+
 // confirm prompts the user for yes/no confirmation
 func confirm(prompt string) bool {
+	// Check for auto-confirm mode
+	if os.Getenv("MSGRAPH_AUTO_CONFIRM") == "true" {
+		fmt.Printf("%s (y/n): y [auto-confirmed]\n", prompt)
+		return true
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("%s (y/n): ", prompt)
 	response, err := reader.ReadString('\n')
