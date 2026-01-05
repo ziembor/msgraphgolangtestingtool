@@ -1,9 +1,7 @@
-//go:build integration
-// +build integration
-
-// Microsoft Graph GoLang Testing Tool - Shared Library
-// This file contains shared code used by both the main CLI tool and integration test tool
-
+// Package main provides shared business logic for the Microsoft Graph GoLang Testing Tool.
+// This file contains all code shared between the main CLI application and integration tests.
+//
+// NO BUILD TAGS - This file is compiled in all build modes.
 package main
 
 import (
@@ -29,7 +27,7 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
-	"golang.org/x/crypto/pkcs12"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 //go:embed VERSION
@@ -85,7 +83,9 @@ type Config struct {
 	EndTime       string // End time in RFC3339 format
 
 	// Network configuration
-	ProxyURL string // HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+	ProxyURL   string        // HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+	MaxRetries int           // Maximum retry attempts for transient failures (default: 3)
+	RetryDelay time.Duration // Base delay between retries in milliseconds (default: 2000ms)
 
 	// Runtime configuration
 	VerboseMode bool // Enable verbose diagnostic output
@@ -100,10 +100,12 @@ func NewConfig() *Config {
 		Subject:       "Automated Tool Notification",
 		Body:          "It's a test message, please ignore",
 		InviteSubject: "System Sync",
-		Action:        ActionGetEvents,
+		Action:        ActionGetInbox,
 		Count:         3,
 		VerboseMode:   false,
 		ShowVersion:   false,
+		MaxRetries:    3,                       // Default: 3 retry attempts
+		RetryDelay:    2000 * time.Millisecond, // Default: 2 second base delay
 	}
 }
 
@@ -323,12 +325,10 @@ func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint stri
 }
 
 func createCertCredential(tenantID, clientID string, pfxData []byte, password string) (*azidentity.ClientCertificateCredential, error) {
-	// Decode PFX using pkcs12
-	// pkcs12.Decode returns the first private key and certificate.
-	key, cert, err := pkcs12.Decode(pfxData, password)
+	// Decode PFX using go-pkcs12 library (supports SHA-256 and other modern algorithms)
+	// pkcs12.DecodeChain returns private key and full certificate chain
+	key, cert, caCerts, err := pkcs12.DecodeChain(pfxData, password)
 	if err != nil {
-		// Fallback: Sometimes pkcs12.Decode fails if the PFX has complex structure.
-		// We could try ToPEM logic here if needed, but Decode is usually sufficient for standard exports.
 		return nil, fmt.Errorf("failed to decode PFX: %w", err)
 	}
 
@@ -338,16 +338,118 @@ func createCertCredential(tenantID, clientID string, pfxData []byte, password st
 		return nil, fmt.Errorf("decoded key is not a valid crypto.PrivateKey")
 	}
 
-	// Options
+	// Build certificate chain: primary cert + CA certs
+	// azidentity expects a slice of certs with the leaf certificate first
+	certs := []*x509.Certificate{cert}
+	if len(caCerts) > 0 {
+		certs = append(certs, caCerts...)
+	}
+
+	// Options - send full certificate chain for better compatibility
 	opts := &azidentity.ClientCertificateCredentialOptions{
 		SendCertificateChain: true,
 	}
 
 	// Create Credential
-	// azidentity expects a slice of certs.
-	certs := []*x509.Certificate{cert}
-
 	return azidentity.NewClientCertificateCredential(tenantID, clientID, certs, privKey, opts)
+}
+
+// isRetryableError determines if an error is transient and worth retrying.
+// Returns true for network timeouts, Graph API throttling (429), and service
+// unavailability (503) errors.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for context cancellation - never retry these
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	// Check for Azure SDK response errors
+	var respErr *azcore.ResponseError
+	if errors.As(err, &respErr) {
+		if respErr.StatusCode == 429 || respErr.StatusCode == 503 || respErr.StatusCode == 504 {
+			return true
+		}
+	}
+
+	// Check error message for common transient patterns
+	errMsg := strings.ToLower(err.Error())
+	transientPatterns := []string{
+		"timeout",
+		"connection reset",
+		"connection refused",
+		"temporary failure",
+		"try again",
+		"i/o timeout",
+		"no such host",
+		"network is unreachable",
+	}
+
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errMsg, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// retryWithBackoff wraps an operation with exponential backoff retry logic.
+// It attempts the operation up to maxRetries times, waiting with exponential
+// backoff between attempts. Only retries errors identified by isRetryableError.
+//
+// The backoff delay follows the pattern: baseDelay * (2^attempt), capped at 30 seconds.
+// For example, with baseDelay=2s: 2s, 4s, 8s, 16s, 30s, 30s...
+//
+// Returns the last error encountered if all retries are exhausted, or nil on success.
+func retryWithBackoff(ctx context.Context, maxRetries int, baseDelay time.Duration, operation func() error) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Execute the operation
+		lastErr = operation()
+
+		// Success - return immediately
+		if lastErr == nil {
+			if attempt > 0 {
+				log.Printf("Operation succeeded after %d retries", attempt)
+			}
+			return nil
+		}
+
+		// Check if error is retryable
+		if !isRetryableError(lastErr) {
+			// Non-retryable error - fail immediately
+			return lastErr
+		}
+
+		// Last attempt failed - return error
+		if attempt == maxRetries {
+			return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+		}
+
+		// Calculate exponential backoff delay (cap at 30 seconds)
+		delay := baseDelay * time.Duration(1<<uint(attempt))
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+
+		log.Printf("Retryable error encountered (attempt %d/%d): %v. Retrying in %v...",
+			attempt+1, maxRetries, lastErr, delay)
+
+		// Wait with context cancellation support
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("retry cancelled: %w", ctx.Err())
+		case <-time.After(delay):
+			// Continue to next retry attempt
+		}
+	}
+
+	return lastErr
 }
 
 func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, count int, config *Config, logger *CSVLogger) error {
@@ -359,7 +461,17 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/events?$top=%d", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Eventable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Events().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		var oDataError *odataerrors.ODataError
 		if errors.As(err, &oDataError) {
@@ -372,7 +484,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 		return fmt.Errorf("error fetching calendar for %s: %w", mailbox, err)
 	}
 
-	events := result.GetValue()
+	events := getValueFunc()
 	eventCount := len(events)
 
 	logVerbose(config.VerboseMode, "API response received: %d events", eventCount)
@@ -571,7 +683,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if startTimeStr == "" {
 		startTime = time.Now()
 	} else {
-		startTime, err = time.Parse(time.RFC3339, startTimeStr)
+		startTime, err = parseFlexibleTime(startTimeStr)
 		if err != nil {
 			log.Printf("Error parsing start time: %v. Using current time instead.", err)
 			startTime = time.Now()
@@ -583,7 +695,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	if endTimeStr == "" {
 		endTime = startTime.Add(1 * time.Hour)
 	} else {
-		endTime, err = time.Parse(time.RFC3339, endTimeStr)
+		endTime, err = parseFlexibleTime(endTimeStr)
 		if err != nil {
 			log.Printf("Error parsing end time: %v. Using start + 1 hour instead.", err)
 			endTime = startTime.Add(1 * time.Hour)
@@ -645,12 +757,22 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	}
 
 	logVerbose(config.VerboseMode, "Calling Graph API: GET /users/%s/messages?$top=%d&$orderby=receivedDateTime DESC", mailbox, count)
-	result, err := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+
+	// Execute API call with retry logic
+	var getValueFunc func() []models.Messageable
+	err := retryWithBackoff(ctx, config.MaxRetries, config.RetryDelay, func() error {
+		apiResult, apiErr := client.Users().ByUserId(mailbox).Messages().Get(ctx, requestConfig)
+		if apiErr == nil {
+			getValueFunc = apiResult.GetValue
+		}
+		return apiErr
+	})
+
 	if err != nil {
 		return fmt.Errorf("error fetching inbox for %s: %w", mailbox, err)
 	}
 
-	messages := result.GetValue()
+	messages := getValueFunc()
 	messageCount := len(messages)
 
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)
@@ -711,6 +833,154 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 		if logger != nil {
 			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
 		}
+	}
+
+	return nil
+}
+
+// validateEmail performs basic email format validation by checking for the presence
+// of an @ symbol and ensuring both local-part and domain are non-empty.
+func validateEmail(email string) error {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return fmt.Errorf("email cannot be empty")
+	}
+	if !strings.Contains(email, "@") {
+		return fmt.Errorf("invalid email format: %s (missing @)", email)
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid email format: %s", email)
+	}
+	return nil
+}
+
+// validateEmails validates a slice of email addresses
+func validateEmails(emails []string, fieldName string) error {
+	for _, email := range emails {
+		if err := validateEmail(email); err != nil {
+			return fmt.Errorf("%s contains invalid email: %w", fieldName, err)
+		}
+	}
+	return nil
+}
+
+// validateGUID validates that a string matches standard GUID format
+func validateGUID(guid, fieldName string) error {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return fmt.Errorf("%s cannot be empty", fieldName)
+	}
+	// Basic GUID format: 8-4-4-4-12 hex characters
+	if len(guid) != 36 {
+		return fmt.Errorf("%s should be a GUID (36 characters, format: 12345678-1234-1234-1234-123456789012)", fieldName)
+	}
+	// Check for proper dash positions
+	if guid[8] != '-' || guid[13] != '-' || guid[18] != '-' || guid[23] != '-' {
+		return fmt.Errorf("%s has invalid GUID format (dashes at wrong positions)", fieldName)
+	}
+	return nil
+}
+
+// parseFlexibleTime parses a time string accepting multiple formats
+func parseFlexibleTime(timeStr string) (time.Time, error) {
+	if timeStr == "" {
+		return time.Time{}, fmt.Errorf("time string is empty")
+	}
+
+	// Try RFC3339 first (with timezone)
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err == nil {
+		return t, nil
+	}
+
+	// Try PowerShell sortable format (without timezone) - assume UTC
+	t, err = time.Parse("2006-01-02T15:04:05", timeStr)
+	if err == nil {
+		return t.UTC(), nil
+	}
+
+	return time.Time{}, fmt.Errorf("invalid time format (expected RFC3339 like '2026-01-15T14:00:00Z' or PowerShell sortable like '2026-01-15T14:00:00')")
+}
+
+// validateRFC3339Time validates that a string matches RFC3339 or PowerShell sortable timestamp format
+func validateRFC3339Time(timeStr, fieldName string) error {
+	if timeStr == "" {
+		return nil // Empty is allowed (defaults are used)
+	}
+	_, err := parseFlexibleTime(timeStr)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fieldName, err)
+	}
+	return nil
+}
+
+// validateConfiguration validates all required configuration fields
+func validateConfiguration(config *Config) error {
+	// Validate required fields with format checking
+	if err := validateGUID(config.TenantID, "Tenant ID"); err != nil {
+		return err
+	}
+	if err := validateGUID(config.ClientID, "Client ID"); err != nil {
+		return err
+	}
+	if err := validateEmail(config.Mailbox); err != nil {
+		return fmt.Errorf("invalid mailbox: %w", err)
+	}
+
+	// Check that at least one authentication method is provided
+	authMethodCount := 0
+	if config.Secret != "" {
+		authMethodCount++
+	}
+	if config.PfxPath != "" {
+		authMethodCount++
+	}
+	if config.Thumbprint != "" {
+		authMethodCount++
+	}
+
+	if authMethodCount == 0 {
+		return fmt.Errorf("missing authentication: must provide one of -secret, -pfx, or -thumbprint")
+	}
+	if authMethodCount > 1 {
+		return fmt.Errorf("multiple authentication methods provided: use only one of -secret, -pfx, or -thumbprint")
+	}
+
+	// Validate email lists if provided
+	if len(config.To) > 0 {
+		if err := validateEmails(config.To, "To recipients"); err != nil {
+			return err
+		}
+	}
+	if len(config.Cc) > 0 {
+		if err := validateEmails(config.Cc, "CC recipients"); err != nil {
+			return err
+		}
+	}
+	if len(config.Bcc) > 0 {
+		if err := validateEmails(config.Bcc, "BCC recipients"); err != nil {
+			return err
+		}
+	}
+
+	// Validate RFC3339 times if provided
+	if err := validateRFC3339Time(config.StartTime, "Start time"); err != nil {
+		return err
+	}
+	if err := validateRFC3339Time(config.EndTime, "End time"); err != nil {
+		return err
+	}
+
+	// Validate action
+	validActions := map[string]bool{
+		ActionGetEvents:  true,
+		ActionSendMail:   true,
+		ActionSendInvite: true,
+		ActionGetInbox:   true,
+	}
+	if !validActions[config.Action] {
+		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox)", config.Action)
 	}
 
 	return nil

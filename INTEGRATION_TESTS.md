@@ -1,32 +1,60 @@
 # Integration Testing Guide
 
-This guide explains how to run interactive integration tests for the Microsoft Graph GoLang Testing Tool.
+This guide explains how to run integration tests for the Microsoft Graph GoLang Testing Tool.
 
 ## Overview
 
-The integration test tool (`integration_test_tool.go`) is a standalone program that tests real Microsoft Graph API operations interactively. Unlike unit tests, these tests:
+The project provides two types of integration tests:
 
+1. **Interactive Test Tool** (`integration_test_tool.go`) - Manual, interactive testing with user prompts
+2. **Automated Integration Tests** (`msgraphgolangtestingtool_integration_test.go`) - Automated Go tests using `testing` package
+
+Both types:
 - ✅ Make real API calls to Microsoft Graph
 - ✅ Use actual Azure AD authentication
 - ✅ Send real emails and create real calendar events
-- ✅ Provide interactive confirmation before write operations
-- ✅ Display results in real-time
+- ✅ **Excluded from regular builds** (require `-tags=integration` flag)
+- ✅ Use shared business logic from `shared.go` (no code duplication)
+
+## Architecture
+
+The codebase uses **build tags** to separate integration tests from the main application:
+
+```
+src/
+├── shared.go                           # NO build tag - shared by all builds
+├── msgraphgolangtestingtool.go         # //go:build !integration - main CLI app
+├── integration_test_tool.go            # //go:build integration - interactive tests
+├── msgraphgolangtestingtool_integration_test.go  # //go:build integration - automated tests
+├── cert_windows.go                     # //go:build windows - Windows cert store
+└── cert_stub.go                        # //go:build !windows - stub for other platforms
+```
+
+**Build Modes:**
+- `go build ./src` → Builds **main CLI app only** (excludes integration tests)
+- `go build -tags=integration ./src` → Would fail (multiple `main()` functions)
+- `go run -tags=integration ./src/integration_test_tool.go` → Runs interactive test tool
+- `go test -tags=integration ./src` → Runs automated integration tests
 
 ## Prerequisites
 
-1. **Azure AD App Registration** with the following permissions:
-   - `Mail.Send` (for sending emails)
-   - `Mail.Read` (for reading inbox)
-   - `Calendars.ReadWrite` (for calendar operations)
-   - **Admin Consent** must be granted
+### 1. Azure AD App Registration
+Requires the following **Application permissions**:
+- `Mail.Send` - For sending emails
+- `Mail.Read` - For reading inbox
+- `Calendars.ReadWrite` - For calendar operations
+- **Admin Consent** must be granted
 
-2. **Client Secret** (certificate authentication not used in integration tests)
+### 2. Authentication
+- **Client Secret** (certificate authentication not used in integration tests for simplicity)
 
-3. **Test Mailbox** - a mailbox you have access to for testing
+### 3. Test Mailbox
+- A dedicated test mailbox you have access to
+- **Do NOT use production mailboxes!**
 
 ## Setup
 
-### 1. Set Environment Variables
+### Set Environment Variables
 
 **PowerShell:**
 ```powershell
@@ -52,11 +80,10 @@ export MSGRAPHSECRET="your-client-secret-here"
 export MSGRAPHMAILBOX="test-user@example.com"
 ```
 
-### 2. Verify Environment Variables
+### Verify Environment Variables
 
-**PowerShell:**
 ```powershell
-# Check that all required variables are set
+# PowerShell
 if ($env:MSGRAPHTENANTID -and $env:MSGRAPHCLIENTID -and $env:MSGRAPHSECRET -and $env:MSGRAPHMAILBOX) {
     Write-Host "✅ All environment variables are set" -ForegroundColor Green
 } else {
@@ -64,63 +91,30 @@ if ($env:MSGRAPHTENANTID -and $env:MSGRAPHCLIENTID -and $env:MSGRAPHSECRET -and 
 }
 ```
 
-## Running Integration Tests
+## Option 1: Interactive Test Tool
 
-### Method 1: Using PowerShell Script (Recommended)
+The interactive test tool provides a guided testing experience with user prompts.
 
-```powershell
-.\run-integration-tests.ps1
-```
-
-### Method 2: Direct Execution
+### Run Interactive Tests
 
 ```powershell
 cd src
-go run integration_test_tool.go
+go run -tags=integration integration_test_tool.go
 ```
 
-### Method 3: Build and Run
+**Features:**
+- ✅ Interactive prompts before write operations
+- ✅ Real-time test results display
+- ✅ Progress indicators
+- ✅ Pass/fail summary
 
-```powershell
-# Build the integration test tool (requires -tags integration)
-cd src
-go build -tags integration -o ../integration_test_tool.exe integration_test_tool.go msgraphgolangtestingtool_lib.go cert_windows.go
+**What Gets Tested:**
+1. **Get Events** (auto-runs) - Retrieves calendar events
+2. **Send Mail** (prompts for confirmation) - Sends test email to self
+3. **Send Calendar Invite** (prompts for confirmation) - Creates calendar event
+4. **Get Inbox** (auto-runs) - Retrieves inbox messages
 
-# Run it
-cd ..
-.\integration_test_tool.exe
-```
-
-## What Gets Tested
-
-The integration test suite executes the following tests:
-
-### Test 1: Get Events (Read-Only) ✅ Auto-runs
-- **Action:** Retrieves calendar events from the test mailbox
-- **Verifies:** Authentication works, API connectivity, calendar read permissions
-- **Side Effects:** None (read-only operation)
-
-### Test 2: Send Mail (Write Operation) ⚠️ Requires Confirmation
-- **Action:** Sends a test email to the test mailbox (to self)
-- **Subject:** "Integration Test - [timestamp]"
-- **Body:** "This is an automated integration test email. Safe to delete."
-- **Verifies:** Email sending permissions, SMTP routing
-- **Side Effects:** Creates an email in your inbox
-
-### Test 3: Send Calendar Invite (Write Operation) ⚠️ Requires Confirmation
-- **Action:** Creates a calendar event for tomorrow
-- **Subject:** "Integration Test Event - [timestamp]"
-- **Start:** Tomorrow at current time
-- **End:** Tomorrow + 1 hour
-- **Verifies:** Calendar write permissions, event creation
-- **Side Effects:** Creates a calendar event
-
-### Test 4: Get Inbox (Read-Only) ✅ Auto-runs
-- **Action:** Retrieves newest inbox messages
-- **Verifies:** Mail read permissions, inbox access
-- **Side Effects:** None (read-only operation)
-
-## Example Output
+### Example Output
 
 ```
 =================================================================
@@ -142,17 +136,11 @@ Creating Microsoft Graph client...
 Test 1: Get Events
 ─────────────────────────────────────────────────────────────────
 Retrieving 3 upcoming calendar events from test-user@example.com...
+Upcoming events for test-user@example.com:
+- Team Meeting (ID: AAMkAD...)
+- Project Review (ID: AAMkAE...)
 
-Event 1:
-  Subject: Team Meeting
-  Start: 2026-01-05T10:00:00Z
-  End: 2026-01-05T11:00:00Z
-
-Event 2:
-  Subject: Project Review
-  Start: 2026-01-06T14:00:00Z
-  End: 2026-01-06T15:00:00Z
-
+Total events retrieved: 2
 ✅ PASSED: Successfully retrieved calendar events
 
 ─────────────────────────────────────────────────────────────────
@@ -160,39 +148,15 @@ Test 2: Send Mail
 ─────────────────────────────────────────────────────────────────
 Send a test email to yourself? (y/n): y
 Sending test email to test-user@example.com...
-  Subject: Integration Test - 2026-01-04T14:30:00Z
+  Subject: Integration Test - 2026-01-05T14:30:00Z
+Email sent successfully from test-user@example.com.
+To: [test-user@example.com]
+Cc: []
+Bcc: []
+Subject: Integration Test - 2026-01-05T14:30:00Z
+Body Type: Text
 ✅ PASSED: Email sent successfully
   Check your inbox to verify delivery
-
-─────────────────────────────────────────────────────────────────
-Test 3: Send Calendar Invite
-─────────────────────────────────────────────────────────────────
-Create a test calendar event? (y/n): y
-Creating test calendar event...
-  Subject: Integration Test Event - 2026-01-04 14:30
-  Start: 2026-01-05T14:30:00Z
-  End: 2026-01-05T15:30:00Z
-✅ PASSED: Calendar invite created successfully
-  Check your calendar to verify the event
-
-─────────────────────────────────────────────────────────────────
-Test 4: Get Inbox Messages
-─────────────────────────────────────────────────────────────────
-Retrieving 3 newest inbox messages from test-user@example.com...
-
-Message 1:
-  From: sender@example.com
-  To: test-user@example.com
-  Subject: Weekly Report
-  Received: 2026-01-04T10:15:30Z
-
-Message 2:
-  From: notifications@service.com
-  To: test-user@example.com
-  Subject: System Alert
-  Received: 2026-01-04T09:45:00Z
-
-✅ PASSED: Successfully retrieved inbox messages
 
 =================================================================
 Integration Test Results Summary
@@ -207,14 +171,73 @@ Pass Rate: 4/4 (100%)
 ✅ All integration tests passed!
 ```
 
-## Interactive Confirmations
+## Option 2: Automated Integration Tests
 
-The tool prompts for confirmation before:
-1. **Starting the test suite** - "Proceed with integration tests?"
-2. **Sending email** - "Send a test email to yourself?"
-3. **Creating calendar event** - "Create a test calendar event?"
+Standard Go tests using the `testing` package.
 
-You can skip write operations by answering "n" (no). Skipped tests are not counted as failures.
+### Run Automated Tests
+
+**Read-only tests (safe):**
+```powershell
+cd src
+go test -tags=integration -v
+```
+
+**All tests including write operations:**
+```powershell
+$env:MSGRAPH_INTEGRATION_WRITE = "true"
+go test -tags=integration -v ./src
+```
+
+**Run specific test:**
+```powershell
+go test -tags=integration -v -run TestIntegration_ListEvents ./src
+```
+
+### Available Tests
+
+| Test | Type | Description |
+|------|------|-------------|
+| `TestIntegration_Prerequisites` | Check | Verifies environment variables are set |
+| `TestIntegration_GraphClientCreation` | Read | Tests Graph client creation |
+| `TestIntegration_ListEvents` | Read | Retrieves calendar events |
+| `TestIntegration_ListInbox` | Read | Retrieves inbox messages |
+| `TestIntegration_SendEmail` | **Write** | Sends test email (requires `MSGRAPH_INTEGRATION_WRITE=true`) |
+| `TestIntegration_CreateCalendarEvent` | **Write** | Creates calendar event (requires `MSGRAPH_INTEGRATION_WRITE=true`) |
+| `TestIntegration_ValidateConfiguration` | Unit | Tests configuration validation logic |
+
+**⚠️ Write Tests:**
+- Require `MSGRAPH_INTEGRATION_WRITE=true` environment variable
+- Send real emails and create real calendar events
+- Automatically skipped if the environment variable is not set
+
+### Example Output
+
+```
+=== RUN   TestIntegration_Prerequisites
+--- PASS: TestIntegration_Prerequisites (0.00s)
+=== RUN   TestIntegration_GraphClientCreation
+    msgraphgolangtestingtool_integration_test.go:59: ✅ Graph client created successfully
+--- PASS: TestIntegration_GraphClientCreation (1.23s)
+=== RUN   TestIntegration_ListEvents
+    msgraphgolangtestingtool_integration_test.go:72: Retrieving 3 upcoming calendar events from test-user@example.com
+Upcoming events for test-user@example.com:
+- Team Meeting (ID: AAMkAD...)
+
+Total events retrieved: 1
+    msgraphgolangtestingtool_integration_test.go:78: ✅ Successfully retrieved calendar events
+--- PASS: TestIntegration_ListEvents (0.82s)
+=== RUN   TestIntegration_ListInbox
+    msgraphgolangtestingtool_integration_test.go:89: Retrieving 3 newest inbox messages from test-user@example.com
+...
+--- PASS: TestIntegration_ListInbox (0.95s)
+=== RUN   TestIntegration_SendEmail
+--- SKIP: TestIntegration_SendEmail (0.00s)
+    msgraphgolangtestingtool_integration_test.go:104: Skipping write operation test - set MSGRAPH_INTEGRATION_WRITE=true to enable
+...
+PASS
+ok      msgraphgolangtestingtool        3.456s
+```
 
 ## Troubleshooting
 
@@ -234,9 +257,9 @@ You can skip write operations by answering "n" (no). Skipped tests are not count
 
 **Solutions:**
 - Check API permissions in Azure AD App Registration:
-  - Mail.Send
-  - Mail.Read
-  - Calendars.ReadWrite
+  - `Mail.Send`
+  - `Mail.Read`
+  - `Calendars.ReadWrite`
 - Grant Admin Consent for these permissions
 - Wait 5-10 minutes for permissions to propagate
 
@@ -256,7 +279,7 @@ You can skip write operations by answering "n" (no). Skipped tests are not count
 
 **Solutions:**
 - Check network connectivity to graph.microsoft.com
-- If behind a proxy, set MSGRAPHPROXY environment variable:
+- If behind a proxy, set `MSGRAPHPROXY` environment variable:
   ```powershell
   $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
   ```
@@ -274,6 +297,7 @@ Remove-Item Env:\MSGRAPHSECRET
 Remove-Item Env:\MSGRAPHTENANTID
 Remove-Item Env:\MSGRAPHCLIENTID
 Remove-Item Env:\MSGRAPHMAILBOX
+Remove-Item Env:\MSGRAPH_INTEGRATION_WRITE
 ```
 
 ## Security Best Practices
@@ -294,27 +318,56 @@ Remove-Item Env:\MSGRAPHMAILBOX
 
 To run integration tests in CI/CD pipelines:
 
+### GitHub Actions Example
+
 ```yaml
-# Example: GitHub Actions
-steps:
-  - name: Run Integration Tests
-    env:
-      MSGRAPHTENANTID: ${{ secrets.MSGRAPH_TENANT_ID }}
-      MSGRAPHCLIENTID: ${{ secrets.MSGRAPH_CLIENT_ID }}
-      MSGRAPHSECRET: ${{ secrets.MSGRAPH_SECRET }}
-      MSGRAPHMAILBOX: ${{ secrets.MSGRAPH_TEST_MAILBOX }}
-    run: |
-      cd src
-      go run integration_test_tool.go
+name: Integration Tests
+on:
+  workflow_dispatch:  # Manual trigger only (don't run on every commit)
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+
+      - name: Run Integration Tests
+        env:
+          MSGRAPHTENANTID: ${{ secrets.MSGRAPH_TENANT_ID }}
+          MSGRAPHCLIENTID: ${{ secrets.MSGRAPH_CLIENT_ID }}
+          MSGRAPHSECRET: ${{ secrets.MSGRAPH_SECRET }}
+          MSGRAPHMAILBOX: ${{ secrets.MSGRAPH_TEST_MAILBOX }}
+          MSGRAPH_INTEGRATION_WRITE: "true"
+        run: |
+          cd src
+          go test -tags=integration -v
 ```
 
-**Note:** For CI/CD, you may want to modify the tool to skip interactive confirmations:
-- Set an environment variable like `MSGRAPH_AUTO_CONFIRM=true`
-- Update the `confirm()` function to auto-return `true` when this is set
+**Important:**
+- Use **workflow_dispatch** or manual triggers (not on every push)
+- Store credentials as **GitHub Secrets**
+- Use a dedicated test tenant
+- Monitor API quota usage
+
+## Comparison: Interactive vs Automated
+
+| Feature | Interactive Tool | Automated Tests |
+|---------|------------------|-----------------|
+| **Run Command** | `go run -tags=integration integration_test_tool.go` | `go test -tags=integration -v` |
+| **User Prompts** | ✅ Yes | ❌ No |
+| **CI/CD Friendly** | ❌ No | ✅ Yes |
+| **Write Protection** | ✅ Prompts for confirmation | ✅ Requires `MSGRAPH_INTEGRATION_WRITE=true` |
+| **Output Format** | Pretty formatted | Standard Go test output |
+| **Use Case** | Manual testing, demos | Automated regression testing, CI/CD |
 
 ## Limitations
 
-- **Only tests client secret authentication** - certificate auth not tested
+- **Only tests client secret authentication** - certificate auth not included in integration tests
 - **Requires manual verification** - check inbox/calendar to confirm operations
 - **No automatic cleanup** - test emails and events must be deleted manually
 - **Network dependent** - requires internet access to graph.microsoft.com
@@ -326,7 +379,8 @@ For issues or questions:
 - See main [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common errors
 - Check [SECURITY_PRACTICES.md](SECURITY_PRACTICES.md) for security guidance
 - Review [README.md](README.md) for general usage information
+- Report issues at: https://github.com/ziembor/msgraphgolangtestingtool/issues
 
 ---
 
-*Integration Testing Guide - Version 1.15.2 - 2026-01-04*
+*Integration Testing Guide - Version 1.16.5 - 2026-01-05*
