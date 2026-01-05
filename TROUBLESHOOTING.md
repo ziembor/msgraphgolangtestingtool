@@ -112,11 +112,11 @@ This guide helps diagnose and resolve common issues when using the Microsoft Gra
 
 ### "ClientAuthenticationError: AADSTS700016: Application not found"
 
-**Cause:** Invalid Client ID or application not registered in Azure AD.
+**Cause:** Invalid Client ID or application not registered in Entra ID.
 
 **Solution:**
 1. Verify Client ID in Azure Portal:
-   - Navigate to Azure AD → App Registrations
+   - Navigate to Entra ID → App Registrations
    - Find your application
    - Copy the "Application (client) ID"
 
@@ -134,7 +134,7 @@ This guide helps diagnose and resolve common issues when using the Microsoft Gra
 
 **Solution:**
 1. Generate a new client secret in Azure Portal:
-   - Navigate to Azure AD → App Registrations → Your App
+   - Navigate to Entra ID → App Registrations → Your App
    - Go to "Certificates & secrets"
    - Click "New client secret"
    - Copy the secret value immediately (it won't be shown again)
@@ -154,23 +154,25 @@ This guide helps diagnose and resolve common issues when using the Microsoft Gra
 **Cause:** App Registration missing required API permissions or admin consent not granted.
 
 **Solution:**
-1. Add required permissions in Azure AD:
-   - Navigate to Azure AD → App Registrations → Your App
-   - Go to "API permissions"
-   - Click "Add a permission" → Microsoft Graph → Application permissions
-   - Add the following permissions based on your actions:
+1. Assign required Exchange Online RBAC permissions:
+
+   **Important**: This tool uses Exchange Online RBAC permissions, NOT Entra ID API permissions.
 
    | Action | Required Permission |
    |--------|---------------------|
-   | `getevents` | `Calendars.Read` or `Calendars.ReadWrite` |
-   | `sendmail` | `Mail.Send` |
-   | `sendinvite` | `Calendars.ReadWrite` |
-   | `getinbox` | `Mail.Read` or `Mail.ReadWrite` |
+   | `getevents` | **Application Calendars.ReadWrite** |
+   | `sendmail` | **Application Mail.ReadWrite** |
+   | `sendinvite` | **Application Calendars.ReadWrite** |
+   | `getinbox` | **Application Mail.ReadWrite** |
+   | `getschedule` | **Application Calendars.ReadWrite** |
 
-2. Grant Admin Consent:
-   - Click "Grant admin consent for [Your Organization]"
-   - Confirm the consent
+2. Assign permissions via PowerShell:
+   - **Recommended Role**: Exchange Administrator (from PIM) - following the Principle of Least Privilege
+   - **Documentation**: [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+   - Use `New-ServicePrincipal` or `New-ManagementRoleAssignment` cmdlets
    - Wait 5-10 minutes for permissions to propagate
+
+   **Note**: While Global Administrator can assign these permissions, Exchange Administrator is recommended for least privilege access.
 
 3. Verify permissions are granted:
    - Check that "Status" column shows green checkmark "Granted for [Your Organization]"
@@ -307,7 +309,7 @@ This guide helps diagnose and resolve common issues when using the Microsoft Gra
 
 **Solution:**
 1. Get your Tenant ID from Azure Portal:
-   - Navigate to Azure AD → Overview
+   - Navigate to Entra ID → Overview
    - Copy "Tenant ID" (format: `12345678-1234-1234-1234-123456789012`)
 
 2. Verify format:

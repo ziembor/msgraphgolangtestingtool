@@ -44,11 +44,13 @@ The project follows Semantic Versioning, but the **major version is locked at 1*
 ## Prerequisites
 
 * **Microsoft Entra ID (Azure AD):** App Registration.
-* **Permissions (Application Type):**
-  * `Mail.Send`
-  * `Mail.Read`
-  * `Calendars.ReadWrite`
-  * *Grant Admin Consent* must be applied.
+* **Exchange Online RBAC Permissions:**
+  * **Application Mail.ReadWrite** (for sendmail, getinbox actions)
+  * **Application Calendars.ReadWrite** (for getevents, sendinvite, getschedule actions)
+  * **Important**: These are Exchange Online RBAC permissions, NOT Entra ID API permissions.
+  * **Documentation**: [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+  * **Recommended Role**: Exchange Administrator (from PIM) to assign these permissions.
+  * **Note**: While Global Administrator can assign these permissions, Exchange Administrator is recommended following the Principle of Least Privilege.
 
 ## Usage
 
@@ -354,13 +356,16 @@ The main function routes to four action handlers based on the `-action` flag (sr
 
 ### Graph API Integration
 
-Uses Microsoft Graph SDK for Go (`github.com/microsoftgraph/msgraph-sdk-go`) with application permissions requiring:
+Uses Microsoft Graph SDK for Go (`github.com/microsoftgraph/msgraph-sdk-go`) with Exchange Online RBAC permissions:
 
-* `Mail.Send`
-* `Mail.Read`
-* `Calendars.ReadWrite`
+* **Application Mail.ReadWrite** (for mail operations)
+* **Application Calendars.ReadWrite** (for calendar operations)
 
-Admin consent must be granted in Azure AD.
+**Important**: These are Exchange Online RBAC permissions assigned via PowerShell, NOT Entra ID API permissions.
+
+**Documentation**: [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+
+**Recommended Role**: Exchange Administrator (from PIM) following the Principle of Least Privilege.
 
 ### Recipient Handling
 
@@ -406,7 +411,7 @@ The `selfsignedcert.ps1` PowerShell script generates a self-signed certificate f
 * Includes comprehensive error handling and validation
 * Provides clear instructions for Azure AD configuration
 
-For production use, upload the public certificate (.cer) to your Azure AD App Registration and use a CA-signed certificate.
+For production use, upload the public certificate (.cer) to your Entra ID Application Registration and use a CA-signed certificate.
 
 ## Required Flags
 

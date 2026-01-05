@@ -38,12 +38,16 @@ src/
 
 ## Prerequisites
 
-### 1. Azure AD App Registration
-Requires the following **Application permissions**:
-- `Mail.Send` - For sending emails
-- `Mail.Read` - For reading inbox
-- `Calendars.ReadWrite` - For calendar operations
-- **Admin Consent** must be granted
+### 1. Entra ID Application Registration
+Requires the following **Exchange Online RBAC permissions** (NOT Entra ID API permissions):
+- **Application Mail.ReadWrite** - For sendmail, getinbox actions
+- **Application Calendars.ReadWrite** - For getevents, sendinvite, getschedule actions
+
+**Important Notes**:
+- These are Exchange Online RBAC permissions assigned via PowerShell
+- **Documentation**: [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+- **Recommended Role**: Exchange Administrator (from PIM) to assign permissions
+- While Global Administrator can assign permissions, Exchange Administrator is recommended following the Principle of Least Privilege
 
 ### 2. Authentication
 - **Client Secret** (certificate authentication not used in integration tests for simplicity)
@@ -256,10 +260,11 @@ ok      msgraphgolangtestingtool        3.456s
 **Error:** "Insufficient privileges to complete the operation"
 
 **Solutions:**
-- Check API permissions in Azure AD App Registration:
-  - `Mail.Send`
-  - `Mail.Read`
-  - `Calendars.ReadWrite`
+- Check Exchange Online RBAC permissions for Entra ID Application Registration:
+  - **Application Mail.ReadWrite**
+  - **Application Calendars.ReadWrite**
+- Verify Exchange Administrator role is assigned (PIM) - recommended for least privilege
+- Permissions must be assigned via PowerShell (see [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac))
 - Grant Admin Consent for these permissions
 - Wait 5-10 minutes for permissions to propagate
 

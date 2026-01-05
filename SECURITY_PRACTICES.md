@@ -119,7 +119,7 @@ $env:MSGRAPHPFXPASS = $plainPass
 # 1. Generate new certificate before old one expires
 .\selfsignedcert.ps1  # Or request from CA
 
-# 2. Upload new certificate to Azure AD App Registration
+# 2. Upload new certificate to Entra ID Application Registration
 # (Azure Portal → App Registrations → Certificates & secrets)
 
 # 3. Test with new certificate
@@ -386,7 +386,7 @@ Get-WinEvent -LogName "Microsoft-Windows-PowerShell/Operational" |
 **Service Accounts for Automation:**
 ```powershell
 # ✅ CORRECT - Dedicated service account
-# Create dedicated Azure AD App Registration for each automation task
+# Create dedicated Entra ID Application Registration for each automation task
 # Grant only required permissions
 # Monitor usage via Azure AD Sign-in logs
 

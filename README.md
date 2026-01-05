@@ -12,7 +12,7 @@ This tool provides a lightweight, standalone executable for testing and managing
 
 ### Authentication Methods
 
-- **Client Secret**: Standard Azure AD App Registration secret
+- **Client Secret**: Standard Entra ID Application Registration secret
 - **PFX Certificate**: Local certificate file with password protection
 - **Windows Certificate Store**: Direct certificate access via thumbprint (no file management required)
 
@@ -73,7 +73,7 @@ Checks recipient availability for the next working day at 12:00 UTC.
 - Returns Free/Busy status
 - Single recipient only
 
-**Required Permissions:** `Calendars.Read` or `Calendars.ReadWrite`
+**Required Permissions:** Exchange Online RBAC **Application Calendars.ReadWrite**
 
 **Example:**
 
@@ -114,11 +114,15 @@ All operations are automatically logged to action-specific CSV files in the Wind
 ### Prerequisites
 
 1. **Go 1.25+** (for building from source)
-2. **Azure AD App Registration** with required permissions:
-   - `Mail.Send`
-   - `Mail.Read`
-   - `Calendars.ReadWrite`
-3. **Admin Consent** granted for the application
+2. **Entra ID Application Registration** with Exchange Online RBAC permissions:
+   - **Application Mail.ReadWrite** (for sendmail, getinbox actions)
+   - **Application Calendars.ReadWrite** (for getevents, sendinvite, getschedule actions)
+
+   **Important**: These are Exchange Online RBAC permissions, NOT Entra ID API permissions.
+
+   - **Documentation**: [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
+   - **Recommended Role**: Exchange Administrator (from PIM) to assign these permissions
+   - **Note**: While Global Administrator can assign these permissions, Exchange Administrator is recommended following the Principle of Least Privilege
 
 ### Build
 
@@ -298,7 +302,7 @@ This creates:
 
 - A 2048-bit RSA certificate with SHA256 hash
 - PFX file (private key) for authentication
-- CER file (public key) to upload to Azure AD App Registration
+- CER file (public key) to upload to Entra ID Application Registration
 
 **For production**: Use CA-signed certificates instead of self-signed certificates.
 
