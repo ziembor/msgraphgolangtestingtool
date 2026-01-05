@@ -7,6 +7,7 @@
 #   Changelog:  Creates Changelog/{version}.md with interactive prompts
 #   Git Tag:    Creates v{version} tag - TRIGGERS GITHUB ACTIONS
 #   Output:     Windows & Linux binaries + GitHub Release with ZIPs
+#   Auto-Bump:  Bumps patch version and creates b{version} branch for next dev cycle
 #
 # Full documentation: See RELEASE.md
 
@@ -22,6 +23,7 @@
     4. Create and push git tag to trigger GitHub Actions build
     5. Optionally create a Pull Request
     6. Optionally monitor GitHub Actions workflow
+    7. Bump patch version and create b{version} branch for next development cycle
 
     IMPORTANT: Only updates src/VERSION - version is embedded at compile time.
 
@@ -455,3 +457,76 @@ if ($createTag -eq 'y' -or $createTag -eq 'Y') {
 }
 
 Write-Success "`nRelease process complete!"
+
+# Bump version for next development cycle
+Write-Header "Step 11: Prepare Next Development Cycle"
+$bumpVersion = Read-Host "Bump patch version and create new development branch? (Y/n)"
+if ($bumpVersion -ne 'n' -and $bumpVersion -ne 'N') {
+    # Parse current (released) version
+    $releasedParts = $newVersion -split '\.'
+    $nextMajor = [int]$releasedParts[0]
+    $nextMinor = [int]$releasedParts[1]
+    $nextPatch = [int]$releasedParts[2] + 1
+
+    $nextVersion = "$nextMajor.$nextMinor.$nextPatch"
+    $branchName = "b$nextVersion"
+
+    Write-Info "Next development version: $nextVersion"
+    Write-Info "Branch name: $branchName"
+
+    # Update VERSION file
+    Write-Info "`nUpdating src\VERSION to $nextVersion..."
+    Set-Content -Path "src\VERSION" -Value $nextVersion -NoNewline
+    Write-Success "Updated src\VERSION to $nextVersion"
+
+    # Create new branch
+    Write-Info "`nCreating branch $branchName..."
+    git checkout -b $branchName
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to create branch $branchName"
+        # Restore VERSION file
+        Set-Content -Path "src\VERSION" -Value $newVersion -NoNewline
+        Write-Warning "Restored src\VERSION to $newVersion"
+    } else {
+        Write-Success "Created and checked out branch: $branchName"
+
+        # Commit the version bump
+        Write-Info "`nCommitting version bump..."
+        git add src\VERSION
+        git commit -m "Bump version to $nextVersion for next development cycle
+
+Preparing for next patch release after v$newVersion
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Version bump committed"
+
+            # Ask about pushing the new branch
+            $pushNewBranch = Read-Host "`nPush new branch '$branchName' to remote? (Y/n)"
+            if ($pushNewBranch -ne 'n' -and $pushNewBranch -ne 'N') {
+                Write-Info "Pushing $branchName to origin..."
+                git push -u origin $branchName
+
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "Branch pushed to origin/$branchName"
+                } else {
+                    Write-Warning "Failed to push branch. You can push manually with: git push -u origin $branchName"
+                }
+            }
+        } else {
+            Write-Error "Failed to commit version bump"
+        }
+
+        # Summary of next dev cycle
+        Write-Info "`nNext development cycle ready:"
+        Write-Host "  ✓ Current branch: $branchName"
+        Write-Host "  ✓ Version in src\VERSION: $nextVersion"
+        Write-Host "  ✓ Ready for development work"
+    }
+} else {
+    Write-Info "Skipped version bump. Current version remains: $newVersion"
+}

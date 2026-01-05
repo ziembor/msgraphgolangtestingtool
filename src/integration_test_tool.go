@@ -8,7 +8,7 @@
 //   Set environment variables:
 //     MSGRAPHTENANTID, MSGRAPHCLIENTID, MSGRAPHSECRET, MSGRAPHMAILBOX
 //   Run:
-//     go run integration_test_tool.go
+//     go run -tags=integration integration_test_tool.go shared.go cert_windows.go
 //
 // This tool will:
 //   1. Validate credentials from environment variables
@@ -141,6 +141,8 @@ func loadConfigFromEnv() (*Config, error) {
 		Mailbox:     mailbox,
 		VerboseMode: false, // Set to true for detailed output
 		Count:       3,
+		MaxRetries:  3,
+		RetryDelay:  2000 * time.Millisecond,
 	}
 
 	return config, nil
@@ -205,11 +207,10 @@ func runIntegrationTests(config *Config) *IntegrationTestResults {
 }
 
 // testGetEvents tests retrieving calendar events
-func testGetEvents(ctx context.Context, client interface{}, config *Config) (bool, error) {
+func testGetEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config) (bool, error) {
 	fmt.Printf("Retrieving %d upcoming calendar events from %s...\n", config.Count, config.Mailbox)
 
-	graphClient := client.(*msgraphsdk.GraphServiceClient)
-	err := listEvents(ctx, graphClient, config.Mailbox, config.Count, config, nil)
+	err := listEvents(ctx, client, config.Mailbox, config.Count, config, nil)
 
 	if err != nil {
 		fmt.Printf("❌ FAILED: %v\n", err)
@@ -221,7 +222,7 @@ func testGetEvents(ctx context.Context, client interface{}, config *Config) (boo
 }
 
 // testSendMail tests sending an email
-func testSendMail(ctx context.Context, client interface{}, config *Config) (bool, error) {
+func testSendMail(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config) (bool, error) {
 	subject := fmt.Sprintf("Integration Test - %s", time.Now().Format(time.RFC3339))
 	body := "This is an automated integration test email. Safe to delete."
 	to := []string{config.Mailbox} // Send to self
@@ -229,8 +230,7 @@ func testSendMail(ctx context.Context, client interface{}, config *Config) (bool
 	fmt.Printf("Sending test email to %s...\n", config.Mailbox)
 	fmt.Printf("  Subject: %s\n", subject)
 
-	graphClient := client.(*msgraphsdk.GraphServiceClient)
-	sendEmail(ctx, graphClient, config.Mailbox, to, nil, nil, subject, body, "", nil, config, nil)
+	sendEmail(ctx, client, config.Mailbox, to, nil, nil, subject, body, "", nil, config, nil)
 
 	fmt.Println("✅ PASSED: Email sent successfully")
 	fmt.Println("  Check your inbox to verify delivery")
@@ -238,9 +238,9 @@ func testSendMail(ctx context.Context, client interface{}, config *Config) (bool
 }
 
 // testSendInvite tests creating a calendar invite
-func testSendInvite(ctx context.Context, client interface{}, config *Config) (bool, error) {
+func testSendInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config) (bool, error) {
 	subject := fmt.Sprintf("Integration Test Event - %s", time.Now().Format("2006-01-02 15:04"))
-	startTime := time.Now().Add(24 * time.Hour).Format(time.RFC3339)        // Tomorrow
+	startTime := time.Now().Add(24 * time.Hour).Format(time.RFC3339)          // Tomorrow
 	endTime := time.Now().Add(24*time.Hour + 1*time.Hour).Format(time.RFC3339) // Tomorrow + 1 hour
 
 	fmt.Println("Creating test calendar event...")
@@ -248,8 +248,7 @@ func testSendInvite(ctx context.Context, client interface{}, config *Config) (bo
 	fmt.Printf("  Start: %s\n", startTime)
 	fmt.Printf("  End: %s\n", endTime)
 
-	graphClient := client.(*msgraphsdk.GraphServiceClient)
-	createInvite(ctx, graphClient, config.Mailbox, subject, startTime, endTime, config, nil)
+	createInvite(ctx, client, config.Mailbox, subject, startTime, endTime, config, nil)
 
 	fmt.Println("✅ PASSED: Calendar invite created successfully")
 	fmt.Println("  Check your calendar to verify the event")
@@ -257,11 +256,10 @@ func testSendInvite(ctx context.Context, client interface{}, config *Config) (bo
 }
 
 // testGetInbox tests retrieving inbox messages
-func testGetInbox(ctx context.Context, client interface{}, config *Config) (bool, error) {
+func testGetInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, config *Config) (bool, error) {
 	fmt.Printf("Retrieving %d newest inbox messages from %s...\n", config.Count, config.Mailbox)
 
-	graphClient := client.(*msgraphsdk.GraphServiceClient)
-	err := listInbox(ctx, graphClient, config.Mailbox, config.Count, config, nil)
+	err := listInbox(ctx, client, config.Mailbox, config.Count, config, nil)
 
 	if err != nil {
 		fmt.Printf("❌ FAILED: %v\n", err)
