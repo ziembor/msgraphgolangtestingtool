@@ -75,69 +75,6 @@ Do you want to continue anyway? (y/N):
 **NEW!** The script automatically scans for non-sanitized secrets before proceeding with the release.
 
 ```
-========================================
-Step 2: Security Scan for Secrets
-========================================
-
-Scanning repository for non-sanitized secrets...
-✓ No unsanitized secrets detected
-```
-
-**What It Scans:**
-- `test-results/*.md` - Integration test results
-- `ChangeLog/*.md` - Changelog entries
-- `*.md` - All markdown documentation
-- `src/*.go` - Source code files
-
-**Detected Secret Types:**
-- **Azure AD Client Secrets** - Pattern: `z3P8Q~...` (34+ characters)
-- **GUIDs/UUIDs** - Pattern: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-- **Email Addresses** - Real email addresses (non-example domains)
-- **API Keys** - Access tokens and secret keys
-
-**Smart Filtering:**
-The scanner automatically skips:
-- Documentation files: `EXAMPLES.md`, `README.md`, `CLAUDE.md`, `IMPROVEMENTS.md`, `UNIT_TESTS.md`
-- Placeholder patterns: `xxx`, `yyy`, `example.com`, `user@example`, `tenant-guid`, `client-guid`
-- Known safe patterns: `noreply@anthropic.com`, `user@example.com`, `test@example.com`
-
-**If Secrets Are Detected:**
-
-```
-✗ Potential secrets detected in repository!
-
-Found 3 potential secret(s):
-
-File                                    Line Type                      Value
-----                                    ---- ----                      -----
-test-results/INTEGRATION_TEST_...md    262  Azure AD Client Secret    z3P8Q~V8VQt8Cao2fInZ0s96xJqTBxtKmSn...
-test-results/INTEGRATION_TEST_...md    260  GUID/UUID                 68057f34-a627-4a49-b61b-61bc9375549f
-test-results/INTEGRATION_TEST_...md    263  Email addresses           user@realdomain.com
-
-⚠ These may be sensitive credentials that should be sanitized before release.
-
-Common fixes:
-  • Replace real GUIDs with: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-  • Replace real emails with: user@example.com
-  • Replace secrets with: xxx~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  • Review test-results/*.md files for real credentials
-
-Do you want to continue anyway? (y/N):
-```
-
-**Recommended Actions:**
-1. **Cancel the release** (press N)
-2. **Sanitize the detected secrets** in the files shown
-3. **Commit the sanitized files**
-4. **Run the release script again**
-
-**Why This Matters:**
-- Prevents accidental exposure of Azure credentials
-- Protects against GitHub push protection blocks
-- Maintains security best practices
-- Avoids having to rewrite git history later
-
-### Step 3: Version Information
 
 Shows current version from `src/VERSION` and suggests next versions.
 
