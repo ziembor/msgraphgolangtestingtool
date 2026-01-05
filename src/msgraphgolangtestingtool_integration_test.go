@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-// Integration tests for Microsoft Graph GoLang Testing Tool
+// Integration tests for Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 // These tests make real API calls to Microsoft Graph and require valid credentials.
 //
 // Usage:
@@ -121,7 +121,7 @@ func TestIntegration_SendEmail(t *testing.T) {
 	}
 
 	subject := fmt.Sprintf("Integration Test Email - %s", time.Now().Format(time.RFC3339))
-	body := "This is an automated integration test email from the Microsoft Graph GoLang Testing Tool. Safe to delete."
+	body := "This is an automated integration test email from the Microsoft Graph EXO Mails/Calendar Golang Testing Tool. Safe to delete."
 	to := []string{config.Mailbox} // Send to self
 
 	t.Logf("Sending test email to %s", config.Mailbox)

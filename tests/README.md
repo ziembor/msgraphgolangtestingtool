@@ -1,6 +1,6 @@
 # Tests Directory
 
-This directory contains test scripts for the Microsoft Graph Golang Testing Tool.
+This directory contains test scripts for the Microsoft Graph EXO Mails/Calendar Golang Testing Tool.
 
 ## Purpose
 

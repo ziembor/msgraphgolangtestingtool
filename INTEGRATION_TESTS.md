@@ -1,6 +1,6 @@
 # Integration Testing Guide
 
-This guide explains how to run integration tests for the Microsoft Graph GoLang Testing Tool.
+This guide explains how to run integration tests for the Microsoft Graph EXO Mails/Calendar Golang Testing Tool.
 
 ## Overview
 
@@ -118,7 +118,7 @@ go run -tags=integration integration_test_tool.go
 
 ```
 =================================================================
-Microsoft Graph GoLang Testing Tool - Integration Test Suite
+Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Integration Test Suite
 =================================================================
 
 Configuration loaded:

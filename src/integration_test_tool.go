@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-// Integration test tool for Microsoft Graph GoLang Testing Tool
+// Integration test tool for Microsoft Graph EXO Mails/Calendar Golang Testing Tool
 // This is an interactive program that tests real Graph API operations.
 //
 // Usage:
@@ -43,7 +43,7 @@ type IntegrationTestResults struct {
 
 func main() {
 	fmt.Println("=================================================================")
-	fmt.Println("Microsoft Graph GoLang Testing Tool - Integration Test Suite")
+	fmt.Println("Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Integration Test Suite")
 	fmt.Println("=================================================================")
 	fmt.Println()
 

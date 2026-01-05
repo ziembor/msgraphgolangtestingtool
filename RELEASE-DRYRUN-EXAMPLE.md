@@ -442,7 +442,7 @@ gh run watch
 gh release download v1.16.2 -p "msgraphgolangtestingtool-windows.zip"
 Expand-Archive msgraphgolangtestingtool-windows.zip -DestinationPath test
 .\test\msgraphgolangtestingtool.exe -version
-# Output: Microsoft Graph Golang Testing Tool - Version 1.16.2
+# Output: Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Version 1.16.2
 ```
 
 ---

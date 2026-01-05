@@ -1,6 +1,6 @@
 # Release Process Documentation
 
-This document explains how to create a new release of the Microsoft Graph GoLang Testing Tool using the interactive release script.
+This document explains how to create a new release of the Microsoft Graph EXO Mails/Calendar Golang Testing Tool using the interactive release script.
 
 ## Quick Start
 
@@ -416,7 +416,7 @@ Expand-Archive -Path release-test.zip -DestinationPath release-test
 
 # Verify version
 .\release-test\msgraphgolangtestingtool.exe -version
-# Output: Microsoft Graph Golang Testing Tool - Version 1.16.2
+# Output: Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Version 1.16.2
 ```
 
 ## Troubleshooting

@@ -1,12 +1,12 @@
-# Portable Microsoft Graph GoLang CLI Tool
+# Portable Microsoft Graph EXO Mails/Calendar Golang CLI Tool
 
 **Repository:** [https://github.com/ziembor/msgraphgolangtestingtool](https://github.com/ziembor/msgraphgolangtestingtool)
 
 ## Overview
 
-This is a lightweight, portable command-line interface (CLI) tool written in **Go (Golang)** designed for Windows (but cross-compatible). It allows interactions with the **Microsoft Graph API** to manage emails and calendar events on Exchange Online (EXO) mailboxes.
+This is a lightweight, portable command-line interface (CLI) tool written in **Go (Golang)** with cross-platform support for **Windows, Linux, and macOS**. It allows interactions with the **Microsoft Graph API** to manage emails and calendar events on Exchange Online (EXO) mailboxes.
 
-The tool is designed for **minimal external dependencies** — it compiles into a single static binary (`.exe`) that does not require installing runtimes or libraries on the target machine.
+The tool is designed for **minimal external dependencies** — it compiles into a single static binary that does not require installing runtimes or libraries on the target machine.
 
 ## Features
 
@@ -473,6 +473,7 @@ git push origin v1.16.2
 **Workflow builds:**
 - Windows binary: `msgraphgolangtestingtool.exe`
 - Linux binary: `msgraphgolangtestingtool`
+- macOS binary: `msgraphgolangtestingtool`
 - Creates ZIP files with binaries + EXAMPLES.md + LICENSE + README.md
 - Creates GitHub Release with tag name
 - Uploads ZIP files to release
@@ -531,7 +532,7 @@ gh browse --repo ziembor/msgraphgolangtestingtool releases
 - ✅ **Version location**: `src/VERSION` (embedded via go:embed)
 - ✅ **Version format**: 1.x.y only (major version locked at 1)
 - ✅ **Tag triggers build**: Pushing `v*` tag triggers GitHub Actions
-- ✅ **Multi-platform**: Builds Windows and Linux binaries
+- ✅ **Multi-platform**: Builds Windows, Linux, and macOS binaries
 - ✅ **Automatic release**: GitHub Release created with ZIPs attached
 
 ### Documentation
