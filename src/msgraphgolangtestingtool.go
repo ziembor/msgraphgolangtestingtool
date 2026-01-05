@@ -29,7 +29,6 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -39,6 +38,28 @@ import (
 // All shared types, constants, and business logic are in shared.go
 
 func main() {
+	// Handle -completion flag FIRST, before anything else runs
+	// This ensures only completion script is output, all other flags are ignored
+	for i, arg := range os.Args {
+		if arg == "-completion" && i+1 < len(os.Args) {
+			shellType := os.Args[i+1]
+			if shellType == "bash" {
+				fmt.Print(generateBashCompletion())
+				os.Exit(0)
+			} else if shellType == "powershell" {
+				fmt.Print(generatePowerShellCompletion())
+				os.Exit(0)
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: Invalid completion shell type '%s'\n", shellType)
+				fmt.Fprintf(os.Stderr, "Valid options: bash, powershell\n\n")
+				fmt.Fprintf(os.Stderr, "Usage:\n")
+				fmt.Fprintf(os.Stderr, "  %s -completion bash > msgraphgolangtestingtool-completion.bash\n", os.Args[0])
+				fmt.Fprintf(os.Stderr, "  %s -completion powershell > msgraphgolangtestingtool-completion.ps1\n", os.Args[0])
+				os.Exit(1)
+			}
+		}
+	}
+
 	if err := run(); err != nil {
 		log.Println(err)
 		os.Exit(1)
@@ -151,7 +172,6 @@ func parseAndConfigureFlags() *Config {
 
 	// Define Command Line Parameters
 	showVersion := flag.Bool("version", false, "Show version information")
-	completionShell := flag.String("completion", "", "Generate shell completion script (bash or powershell) and exit")
 	tenantID := flag.String("tenantid", "", "The Azure Tenant ID (env: MSGRAPHTENANTID)")
 	clientID := flag.String("clientid", "", "The Application (Client) ID (env: MSGRAPHCLIENTID)")
 	secret := flag.String("secret", "", "The Client Secret (env: MSGRAPHSECRET)")
@@ -167,13 +187,13 @@ func parseAndConfigureFlags() *Config {
 	flag.Var(&bcc, "bcc", "Comma-separated list of BCC recipients (env: MSGRAPHBCC)")
 
 	// Email content flags
-	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email (env: MSGRAPHSUBJECT)")
+	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email or calendar invite (env: MSGRAPHSUBJECT)")
 	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text) (env: MSGRAPHBODY)")
 	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided) (env: MSGRAPHBODYHTML)")
 	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach (env: MSGRAPHATTACHMENTS)")
 
 	// Calendar invite flags
-	inviteSubject := flag.String("invite-subject", "System Sync", "Subject of the calendar invite (env: MSGRAPHINVITESUBJECT)")
+	inviteSubject := flag.String("invite-subject", "", "")  // Deprecated: use -subject instead
 	startTime := flag.String("start", "", "Start time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T14:00:00Z', '2026-01-15T14:00:00'. Defaults to now if empty (env: MSGRAPHSTART)")
 	endTime := flag.String("end", "", "End time for calendar invite (RFC3339 or PowerShell 'Get-Date -Format s' format). Examples: '2026-01-15T15:00:00Z', '2026-01-15T15:00:00'. Defaults to 1 hour after start if empty (env: MSGRAPHEND)")
 
@@ -193,7 +213,7 @@ func parseAndConfigureFlags() *Config {
 	// Count for getevents and getinbox
 	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
 
-	action := flag.String("action", "getinbox", "Action to perform: getevents, sendmail, sendinvite, getinbox (env: MSGRAPHACTION)")
+	action := flag.String("action", "getinbox", "Action to perform: getevents, sendmail, sendinvite, getinbox, getschedule (env: MSGRAPHACTION)")
 	flag.Parse()
 
 	// Apply environment variables if flags not set via command line
@@ -281,12 +301,11 @@ func parseAndConfigureFlags() *Config {
 
 	// Create and populate Config struct with all parsed values
 	config := &Config{
-		ShowVersion:     *showVersion,
-		CompletionShell: *completionShell,
-		TenantID:        *tenantID,
-		ClientID:        *clientID,
-		Mailbox:         *mailbox,
-		Action:          *action,
+		ShowVersion: *showVersion,
+		TenantID:    *tenantID,
+		ClientID:    *clientID,
+		Mailbox:     *mailbox,
+		Action:      *action,
 		Secret:          *secret,
 		PfxPath:         *pfxPath,
 		PfxPass:         *pfxPass,
@@ -363,10 +382,24 @@ func executeAction(ctx context.Context, client *msgraphsdk.GraphServiceClient, c
 
 		sendEmail(ctx, client, config.Mailbox, config.To, config.Cc, config.Bcc, config.Subject, config.Body, config.BodyHTML, config.AttachmentFiles, config, logger)
 	case ActionSendInvite:
-		createInvite(ctx, client, config.Mailbox, config.InviteSubject, config.StartTime, config.EndTime, config, logger)
+		// Use Subject for calendar invite
+		// For backward compatibility, if InviteSubject is set, use it instead
+		inviteSubject := config.Subject
+		if config.InviteSubject != "" {
+			inviteSubject = config.InviteSubject
+		}
+		// If using default email subject, change to default calendar invite subject
+		if inviteSubject == "Automated Tool Notification" {
+			inviteSubject = "It's testing event"
+		}
+		createInvite(ctx, client, config.Mailbox, inviteSubject, config.StartTime, config.EndTime, config, logger)
 	case ActionGetInbox:
 		if err := listInbox(ctx, client, config.Mailbox, config.Count, config, logger); err != nil {
 			return fmt.Errorf("failed to list inbox: %w", err)
+		}
+	case ActionGetSchedule:
+		if err := checkAvailability(ctx, client, config.Mailbox, config.To[0], config, logger); err != nil {
+			return fmt.Errorf("failed to check availability: %w", err)
 		}
 	default:
 		return fmt.Errorf("unknown action: %s", config.Action)
@@ -396,25 +429,6 @@ func run() error {
 	if config.ShowVersion {
 		fmt.Printf("Microsoft Graph EXO Mails/Calendar Golang Testing Tool - Version %s\n", version)
 		return nil
-	}
-
-	// 3a. Handle completion script generation early exit
-	if config.CompletionShell != "" {
-		shellType := strings.ToLower(config.CompletionShell)
-		switch shellType {
-		case "bash":
-			fmt.Print(generateBashCompletion())
-			return nil
-		case "powershell", "pwsh", "ps1":
-			fmt.Print(generatePowerShellCompletion())
-			return nil
-		default:
-			fmt.Fprintf(os.Stderr, "Error: Unknown shell type '%s'. Supported shells: bash, powershell\n", config.CompletionShell)
-			fmt.Fprintf(os.Stderr, "\nUsage:\n")
-			fmt.Fprintf(os.Stderr, "  %s -completion bash > msgraphgolangtestingtool-completion.bash\n", os.Args[0])
-			fmt.Fprintf(os.Stderr, "  %s -completion powershell > msgraphgolangtestingtool-completion.ps1\n", os.Args[0])
-			os.Exit(1)
-		}
 	}
 
 	// 4. Validate configuration

@@ -63,11 +63,48 @@ Lists the newest 10 messages from a user's inbox with sender, recipients, subjec
 .\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "user@example.com" -action getinbox
 ```
 
+#### 5. Check Availability (`-action getschedule`)
+
+Checks recipient availability for the next working day at 12:00 UTC.
+
+**Features:**
+- Automatically calculates next working day (Monday-Friday, skips weekends)
+- Checks 1-hour availability window (12:00-13:00 UTC)
+- Returns Free/Busy status
+- Single recipient only
+
+**Required Permissions:** `Calendars.Read` or `Calendars.ReadWrite`
+
+**Example:**
+
+```powershell
+.\msgraphgolangtestingtool.exe -tenantid"TENANT_ID" -clientid"CLIENT_ID" -secret "SECRET" -mailbox "organizer@example.com" -action getschedule -to "recipient@example.com"
+```
+
+**Output:**
+```
+Availability Check Results:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Organizer:     organizer@example.com
+Recipient:     recipient@example.com
+Check Date:    2026-01-06
+Check Time:    12:00-13:00 UTC
+Status:        Free
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Possible Status Values:**
+- Free
+- Tentative
+- Busy
+- Out of Office
+- Working Elsewhere
+
 ### CSV Logging
 
 All operations are automatically logged to action-specific CSV files in the Windows temp directory:
 - **Location**: `%TEMP%\_msgraphgolangtestingtool_{action}_YYYY-MM-DD.csv`
-- **Examples**: `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`, `sendinvite_2026-01-03.csv`, `getinbox_2026-01-03.csv`
+- **Examples**: `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`, `sendinvite_2026-01-03.csv`, `getinbox_2026-01-03.csv`, `getschedule_2026-01-05.csv`
 - **Content**: Timestamps, action details, results, and status
 - **Mode**: Append (multiple runs of the same action on the same day add to the same file)
 - **Schema**: Each action type has its own consistent schema to prevent column conflicts
