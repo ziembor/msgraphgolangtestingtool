@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/golang-jwt/jwt/v5"
 	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
@@ -49,6 +50,14 @@ const (
 	StatusSuccess = "Success"
 	StatusError   = "Error"
 )
+
+// TokenClaims represents relevant claims from Microsoft Entra ID JWT tokens
+// for display in verbose mode. Includes application metadata and assigned roles.
+type TokenClaims struct {
+	AppDisplayName string   `json:"app_displayname"` // Application display name from Entra ID
+	Roles          []string `json:"roles"`           // Assigned application roles (e.g., Mail.ReadWrite)
+	jwt.RegisteredClaims                             // Standard JWT claims (exp, iss, etc.)
+}
 
 // Config holds all application configuration including command-line flags,
 // environment variables, and runtime state. This centralized configuration
@@ -1438,7 +1447,49 @@ func printTokenInfo(token azcore.AccessToken) {
 	}
 	fmt.Printf("Token length: %d characters\n", len(tokenStr))
 
+	// Parse and display JWT claims (application name and roles)
 	fmt.Println()
+	fmt.Println("JWT Claims:")
+	appName, roles, err := parseTokenClaims(tokenStr)
+	if err != nil {
+		fmt.Printf("  (Could not parse JWT claims: %v)\n", err)
+	} else {
+		fmt.Printf("  Application Name: %s\n", appName)
+		fmt.Printf("  Assigned Roles: %s\n", roles)
+	}
+
+	fmt.Println()
+}
+
+// parseTokenClaims extracts application name and assigned roles from a JWT access token.
+// Returns (appName, rolesString, error) where rolesString is comma-separated.
+// Uses ParseUnverified since Azure SDK already validated the token.
+// Gracefully handles missing claims with friendly defaults.
+func parseTokenClaims(tokenString string) (string, string, error) {
+	// Parse without verification (token already validated by Azure SDK)
+	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, &TokenClaims{})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse JWT: %w", err)
+	}
+
+	claims, ok := token.Claims.(*TokenClaims)
+	if !ok {
+		return "", "", fmt.Errorf("failed to extract claims from token")
+	}
+
+	// Extract app display name (may be empty)
+	appName := claims.AppDisplayName
+	if appName == "" {
+		appName = "(not available)"
+	}
+
+	// Extract roles (may be empty array)
+	rolesStr := "(none)"
+	if len(claims.Roles) > 0 {
+		rolesStr = strings.Join(claims.Roles, ", ")
+	}
+
+	return appName, rolesStr, nil
 }
 
 // maskSecret masks a secret for display
