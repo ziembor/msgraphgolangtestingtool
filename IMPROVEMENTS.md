@@ -274,7 +274,7 @@ func retryWithBackoff(ctx context.Context, maxRetries int, baseDelay time.Durati
         // Calculate exponential backoff delay (cap at 30 seconds)
         delay := baseDelay * time.Duration(1<<uint(attempt))
         if delay > 30*time.Second {
-            delay = 30 * time.Second
+            delay = 30*time.Second
         }
 
         log.Printf("Retryable error encountered (attempt %d/%d): %v. Retrying in %v...",
@@ -380,8 +380,8 @@ The retry logic is integrated into **read operations only** (to prevent duplicat
 **Usage Examples:**
 ```powershell
 # Custom retry configuration
-.\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." `
-    -mailbox "user@example.com" -action getevents `
+.\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." \
+    -mailbox "user@example.com" -action getevents \
     -maxretries 5 -retrydelay 1000
 
 # Via environment variables
@@ -850,6 +850,7 @@ The `enrichGraphAPIError()` function is integrated into all 4 API operations:
 
 ---
 
+
 ## Summary by Priority
 
 | Priority | Count | Recommendations | Status |
@@ -1111,3 +1112,6 @@ src/
 - Added architecture verification details for #8
 
 **Original Review Date:** 2026-01-04 (v1.15.3)
+
+                          ..ooOO END OOoo..
+

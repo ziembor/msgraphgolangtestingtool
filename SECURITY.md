@@ -572,3 +572,7 @@ Before deploying to production:
 - [ ] Incident response plan documented
 - [ ] Compliance requirements reviewed
 - [ ] Security team notified of deployment
+
+                          ..ooOO END OOoo..
+
+

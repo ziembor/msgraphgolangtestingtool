@@ -33,7 +33,7 @@ The tool is designed for **minimal external dependencies** — it compiles into 
 
 ## Versioning
 
-The project follows Semantic Versioning, but the **major version is locked at 1**. All breaking changes or major features will be released as minor version increments within the 1.x.y branch.
+The project follows Semantic Versioning, but the **major version is locked at 1** and cannot be upgraded. All breaking changes or major features will be released as minor version increments within the 1.x.y branch.
 
 **Version Management:**
 - Current version is stored in `src/VERSION`
@@ -118,3 +118,7 @@ See **[RELEASE.md](RELEASE.md)** for the complete release guide.
 - **[README.md](README.md)** - User-facing documentation.
 - **[EXAMPLES.md](EXAMPLES.md)** - Usage examples.
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices.
+
+                          ..ooOO END OOoo..
+
+

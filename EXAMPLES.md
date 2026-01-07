@@ -17,13 +17,13 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Get default 3 upcoming events
-.\msgraphgolangtestingtool.exe -action getevents
+./msgraphgolangtestingtool.exe -action getevents
 
 # Get 10 upcoming events
-.\msgraphgolangtestingtool.exe -action getevents -count 10
+./msgraphgolangtestingtool.exe -action getevents -count 10
 
 # Get 5 events with verbose output
-.\msgraphgolangtestingtool.exe -action getevents -count 5 -verbose
+./msgraphgolangtestingtool.exe -action getevents -count 5 -verbose
 ```
 
 ---
@@ -32,20 +32,20 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Send to self (default behavior when no recipients specified)
-.\msgraphgolangtestingtool.exe -action sendmail
+./msgraphgolangtestingtool.exe -action sendmail
 
 # Send to specific recipient
-.\msgraphgolangtestingtool.exe -action sendmail -to "recipient@example.com"
+./msgraphgolangtestingtool.exe -action sendmail -to "recipient@example.com"
 
 # Send with custom subject and body
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "Test Email" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "Test Email" \
     -body "This is a test message"
 
 # Send to multiple recipients (comma-separated)
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "user1@example.com,user2@example.com" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "user1@example.com,user2@example.com" \
     -subject "Team Update"
 ```
 
@@ -55,23 +55,23 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Send with CC recipients
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -cc "cc1@example.com,cc2@example.com" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -cc "cc1@example.com,cc2@example.com" \
     -subject "Meeting Notes"
 
 # Send with BCC recipients
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -bcc "bcc@example.com" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -bcc "bcc@example.com" \
     -subject "Confidential Update"
 
 # Send with To, CC, and BCC
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "primary@example.com" `
-    -cc "cc1@example.com,cc2@example.com" `
-    -bcc "bcc@example.com" `
-    -subject "Quarterly Report" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "primary@example.com" \
+    -cc "cc1@example.com,cc2@example.com" \
+    -bcc "bcc@example.com" \
+    -subject "Quarterly Report" \
     -body "Please review the attached report."
 ```
 
@@ -81,16 +81,16 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Send HTML email
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "HTML Email Test" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "HTML Email Test" \
     -bodyHTML "<h1>Hello</h1><p>This is an <strong>HTML</strong> email.</p>"
 
 # Send both text and HTML (multipart MIME)
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "Multipart Email" `
-    -body "This is the plain text version" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "Multipart Email" \
+    -body "This is the plain text version" \
     -bodyHTML "<h1>HTML Version</h1><p>This is the <em>HTML</em> version</p>"
 ```
 
@@ -100,22 +100,22 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Send with single attachment
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "Document Attached" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "Document Attached" \
     -attachments "C:\Reports\report.pdf"
 
 # Send with multiple attachments (comma-separated)
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "Multiple Files" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "Multiple Files" \
     -attachments "C:\Files\doc1.pdf,C:\Files\spreadsheet.xlsx,C:\Files\image.png"
 
 # Send HTML email with attachments
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "recipient@example.com" `
-    -subject "Report with Charts" `
-    -bodyHTML "<h1>Monthly Report</h1><p>See attached files.</p>" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "recipient@example.com" \
+    -subject "Report with Charts" \
+    -bodyHTML "<h1>Monthly Report</h1><p>See attached files.</p>" \
     -attachments "C:\Reports\report.pdf,C:\Charts\chart.png"
 ```
 
@@ -125,26 +125,26 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Create invite with default subject and time (now + 1 hour)
-.\msgraphgolangtestingtool.exe -action sendinvite
+./msgraphgolangtestingtool.exe -action sendinvite
 
 # Create invite with custom subject
-.\msgraphgolangtestingtool.exe -action sendinvite -invite-subject "Team Meeting"
+./msgraphgolangtestingtool.exe -action sendinvite -invite-subject "Team Meeting"
 
 # Create invite with specific start time
-.\msgraphgolangtestingtool.exe -action sendinvite `
-    -invite-subject "Project Review" `
+./msgraphgolangtestingtool.exe -action sendinvite \
+    -invite-subject "Project Review" \
     -start "2026-01-15T14:00:00Z"
 
 # Create invite with start and end times
-.\msgraphgolangtestingtool.exe -action sendinvite `
-    -invite-subject "Weekly Standup" `
-    -start "2026-01-15T10:00:00Z" `
+./msgraphgolangtestingtool.exe -action sendinvite \
+    -invite-subject "Weekly Standup" \
+    -start "2026-01-15T10:00:00Z" \
     -end "2026-01-15T10:30:00Z"
 
 # Create all-day event (midnight to midnight next day)
-.\msgraphgolangtestingtool.exe -action sendinvite `
-    -invite-subject "Conference Day" `
-    -start "2026-02-01T00:00:00Z" `
+./msgraphgolangtestingtool.exe -action sendinvite \
+    -invite-subject "Conference Day" \
+    -start "2026-02-01T00:00:00Z" \
     -end "2026-02-02T00:00:00Z"
 ```
 
@@ -154,13 +154,13 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Get default 3 newest messages
-.\msgraphgolangtestingtool.exe -action getinbox
+./msgraphgolangtestingtool.exe -action getinbox
 
 # Get 10 newest messages
-.\msgraphgolangtestingtool.exe -action getinbox -count 10
+./msgraphgolangtestingtool.exe -action getinbox -count 10
 
 # Get 20 newest messages with verbose output
-.\msgraphgolangtestingtool.exe -action getinbox -count 20 -verbose
+./msgraphgolangtestingtool.exe -action getinbox -count 20 -verbose
 ```
 
 ---
@@ -169,13 +169,13 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ```powershell
 # Use proxy for all network requests
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "user@example.com" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "user@example.com" \
     -proxy "http://proxy.company.com:8080"
 
 # Proxy with environment variable
 $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
-.\msgraphgolangtestingtool.exe -action getevents
+./msgraphgolangtestingtool.exe -action getevents
 ```
 
 ---
@@ -184,7 +184,7 @@ $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
 
 ```powershell
 # Show detailed configuration, authentication, and API call information
-.\msgraphgolangtestingtool.exe -action sendmail -to "user@example.com" -verbose
+./msgraphgolangtestingtool.exe -action sendmail -to "user@example.com" -verbose
 
 # Verbose output shows:
 # - Environment variables (MSGRAPH*)
@@ -202,12 +202,12 @@ $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
 ### Send Formatted HTML Report with Multiple Attachments
 
 ```powershell
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "team-lead@example.com,manager@example.com" `
-    -cc "team@example.com" `
-    -subject "Q1 2026 Performance Report" `
-    -bodyHTML "<h1>Q1 Performance Report</h1><p>Dear Team,</p><p>Please find attached the Q1 performance metrics and analysis.</p><ul><li>Revenue: Up 15%</li><li>Customer Satisfaction: 94%</li></ul><p>Best regards,<br>Analytics Team</p>" `
-    -attachments "C:\Reports\Q1-Metrics.xlsx,C:\Reports\Q1-Analysis.pdf,C:\Charts\revenue-chart.png" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "team-lead@example.com,manager@example.com" \
+    -cc "team@example.com" \
+    -subject "Q1 2026 Performance Report" \
+    -bodyHTML "<h1>Q1 Performance Report</h1><p>Dear Team,</p><p>Please find attached the Q1 performance metrics and analysis.</p><ul><li>Revenue: Up 15%</li><li>Customer Satisfaction: 94%</li></ul><p>Best regards,<br>Analytics Team</p>" \
+    -attachments "C:\Reports\Q1-Metrics.xlsx,C:\Reports\Q1-Analysis.pdf,C:\Charts\revenue-chart.png" \
     -verbose
 ```
 
@@ -215,15 +215,15 @@ $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
 
 ```powershell
 # Week 1
-.\msgraphgolangtestingtool.exe -action sendinvite `
-    -invite-subject "Weekly Team Sync - Week 1" `
-    -start "2026-01-06T15:00:00Z" `
+./msgraphgolangtestingtool.exe -action sendinvite \
+    -invite-subject "Weekly Team Sync - Week 1" \
+    -start "2026-01-06T15:00:00Z" \
     -end "2026-01-06T15:30:00Z"
 
 # Week 2
-.\msgraphgolangtestingtool.exe -action sendinvite `
-    -invite-subject "Weekly Team Sync - Week 2" `
-    -start "2026-01-13T15:00:00Z" `
+./msgraphgolangtestingtool.exe -action sendinvite \
+    -invite-subject "Weekly Team Sync - Week 2" \
+    -start "2026-01-13T15:00:00Z" \
     -end "2026-01-13T15:30:00Z"
 ```
 
@@ -231,8 +231,8 @@ $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
 
 ```powershell
 # Log inbox and calendar to files
-.\msgraphgolangtestingtool.exe -action getinbox -count 50 | Out-File -Append "C:\Logs\inbox-monitor.log"
-.\msgraphgolangtestingtool.exe -action getevents -count 20 | Out-File -Append "C:\Logs\calendar-monitor.log"
+./msgraphgolangtestingtool.exe -action getinbox -count 50 | Out-File -Append "C:\Logs\inbox-monitor.log"
+./msgraphgolangtestingtool.exe -action getevents -count 20 | Out-File -Append "C:\Logs\calendar-monitor.log"
 ```
 
 ---
@@ -242,15 +242,15 @@ $env:MSGRAPHPROXY = "http://proxy.company.com:8080"
 ```powershell
 # Client Secret (via environment variable)
 $env:MSGRAPHSECRET = "your-secret"
-.\msgraphgolangtestingtool.exe -action getevents
+./msgraphgolangtestingtool.exe -action getevents
 
 # PFX Certificate File
-.\msgraphgolangtestingtool.exe -action getevents `
-    -pfx "C:\Certs\app-cert.pfx" `
+./msgraphgolangtestingtool.exe -action getevents \
+    -pfx "C:\Certs\app-cert.pfx" \
     -pfxpass "MyP@ssw0rd"
 
 # Windows Certificate Store (Thumbprint)
-.\msgraphgolangtestingtool.exe -action getevents `
+./msgraphgolangtestingtool.exe -action getevents \
     -thumbprint "CD817B3329802E692CF30D8DDF896FE811B048AB"
 ```
 
@@ -267,7 +267,7 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 $env:MSGRAPHACTION = "sendmail"  # Default action
 
 # Override specific parameters via flags (flags take precedence)
-.\msgraphgolangtestingtool.exe -to "override@example.com" -subject "Override Test"
+./msgraphgolangtestingtool.exe -to "override@example.com" -subject "Override Test"
 ```
 
 ---
@@ -276,7 +276,7 @@ $env:MSGRAPHACTION = "sendmail"  # Default action
 
 ```powershell
 # Press Ctrl+C during long-running operations to gracefully shutdown
-.\msgraphgolangtestingtool.exe -action getinbox -count 100
+./msgraphgolangtestingtool.exe -action getinbox -count 100
 
 # Output on interrupt:
 #
@@ -290,14 +290,14 @@ $env:MSGRAPHACTION = "sendmail"  # Default action
 
 ```powershell
 # Test with invalid action (will show error)
-.\msgraphgolangtestingtool.exe -action invalid
+./msgraphgolangtestingtool.exe -action invalid
 
 # Test missing required parameters (will show error)
-.\msgraphgolangtestingtool.exe -action sendmail
+./msgraphgolangtestingtool.exe -action sendmail
 # Error: Missing required parameters (tenantid, clientid, mailbox).
 
 # Test with verbose to debug issues
-.\msgraphgolangtestingtool.exe -action sendmail -to "user@example.com" -verbose
+./msgraphgolangtestingtool.exe -action sendmail -to "user@example.com" -verbose
 ```
 
 ---
@@ -371,19 +371,19 @@ All flags can be set via environment variables with the `MSGRAPH` prefix:
 
 ```powershell
 # Check version
-.\msgraphgolangtestingtool.exe -version
+./msgraphgolangtestingtool.exe -version
 
 # Get help (shows all flags)
-.\msgraphgolangtestingtool.exe -h
+./msgraphgolangtestingtool.exe -h
 
 # Test authentication
-.\msgraphgolangtestingtool.exe -action getevents -verbose
+./msgraphgolangtestingtool.exe -action getevents -verbose
 
 # Send quick test email
-.\msgraphgolangtestingtool.exe -action sendmail
+./msgraphgolangtestingtool.exe -action sendmail
 
 # View recent inbox
-.\msgraphgolangtestingtool.exe -action getinbox -count 10
+./msgraphgolangtestingtool.exe -action getinbox -count 10
 ```
 
 ---
@@ -394,24 +394,24 @@ Configure network resilience with automatic retry on transient failures:
 
 ```powershell
 # Use custom retry settings
-.\msgraphgolangtestingtool.exe -action getevents `
-    -maxretries 5 `
+./msgraphgolangtestingtool.exe -action getevents \
+    -maxretries 5 \
     -retrydelay 1000  # 1 second base delay
 
 # Disable retries (set to 0)
-.\msgraphgolangtestingtool.exe -action sendmail `
-    -to "user@example.com" `
+./msgraphgolangtestingtool.exe -action sendmail \
+    -to "user@example.com" \
     -maxretries 0
 
 # Use aggressive retry for unreliable networks
-.\msgraphgolangtestingtool.exe -action getinbox `
-    -maxretries 10 `
+./msgraphgolangtestingtool.exe -action getinbox \
+    -maxretries 10 \
     -retrydelay 3000  # 3 second base delay
 
 # Set via environment variables
 $env:MSGRAPHMAXRETRIES = "5"
 $env:MSGRAPHRETRYDELAY = "2500"
-.\msgraphgolangtestingtool.exe -action getevents
+./msgraphgolangtestingtool.exe -action getevents
 ```
 
 **Retry Behavior:**
@@ -426,9 +426,9 @@ $env:MSGRAPHRETRYDELAY = "2500"
 
 **Example with verbose output:**
 ```powershell
-.\msgraphgolangtestingtool.exe -action getinbox `
-    -maxretries 3 `
-    -retrydelay 1000 `
+./msgraphgolangtestingtool.exe -action getinbox \
+    -maxretries 3 \
+    -retrydelay 1000 \
     -verbose
 
 # Output will show retry attempts:
@@ -471,3 +471,6 @@ All flags can be set via environment variables with the `MSGRAPH` prefix:
 ---
 
 NOTE: *Generated for msgraphgolangtestingtool v1.16.0*
+
+                          ..ooOO END OOoo..
+
