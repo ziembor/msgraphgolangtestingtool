@@ -22,9 +22,10 @@ This document provides context for Gemini to effectively assist with the `msgrap
 *   `src/msgraphgolangtestingtool.go`: Main entry point and application logic.
 *   `src/cert_windows.go`: Windows-specific certificate store implementation.
 *   `src/cert_stub.go`: Stub for non-Windows builds.
-*   `VERSION`: Current version string (e.g., `1.12.6`).
+*   `src/VERSION`: Current version string (e.g., `1.12.6`).
 *   `.github/workflows/`: GitHub Actions for CI/CD.
 *   `tests/`: Integration tests.
+*   `Changelog/`: Directory containing changelog files (e.g., `1.12.6.md`).
 
 ## Development Workflow
 
@@ -45,20 +46,20 @@ go build -C src -ldflags="-s -w" -o msgraphgolangtestingtool.exe
 ### 2. Versioning
 
 *   **Major Version Locked:** Always `1.x.y`.
-*   **Locations:** Version is defined in TWO places and **MUST** match:
-    1.  `VERSION` file at project root.
-    2.  `const version` in `src/msgraphgolangtestingtool.go`.
-*   **Process:** Update both files when making a release.
+*   **Single Source of Truth:** `src/VERSION`.
+*   **Mechanism:** Go code uses `//go:embed VERSION` to compile the version string. **Do not** edit Go source for version updates.
+*   **Process:** Update `src/VERSION` and create `Changelog/{version}.md`.
 
 ### 3. Release Process
 
 Releases are automated via GitHub Actions when a tag is pushed.
 
-1.  Update `VERSION` and `src/msgraphgolangtestingtool.go`.
-2.  Update `CHANGELOG.md`.
-3.  Commit changes.
-4.  Tag the commit: `git tag v1.x.y`
-5.  Push tag: `git push origin v1.x.y`
+1.  **Recommended:** Use `.\release.ps1` for interactive release.
+2.  **Manual:**
+    *   Update `src/VERSION`.
+    *   Create `Changelog/{version}.md`.
+    *   Commit and Tag (`git tag v1.x.y`).
+    *   Push tag (`git push origin v1.x.y`).
 
 This triggers `.github/workflows/build.yml` which builds the binary and attaches it to a GitHub Release.
 
@@ -100,4 +101,10 @@ CSV logs are written to `%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`.
 
 *   `CLAUDE.md`: Detailed architecture and AI context (primary reference).
 *   `BUILD.md`: Detailed build instructions.
+*   `RELEASE.md`: Release process and versioning policy.
 *   `README.md`: User-facing documentation.
+*   `SECURITY.md`: Security policy and best practices.
+
+                          ..ooOO END OOoo..
+
+

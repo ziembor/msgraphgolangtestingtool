@@ -165,6 +165,8 @@ This guide helps diagnose and resolve common issues when using the Microsoft Gra
    | `sendinvite` | **Application Calendars.ReadWrite** |
    | `getinbox` | **Application Mail.ReadWrite** |
    | `getschedule` | **Application Calendars.ReadWrite** |
+   | `exportinbox` | **Application Mail.ReadWrite** |
+   | `searchandexport` | **Application Mail.ReadWrite** |
 
 2. Assign permissions via PowerShell:
    - **Recommended Role**: Exchange Administrator (from PIM) - following the Principle of Least Privilege
@@ -431,6 +433,122 @@ $env:MSGRAPHMAILBOX = "user@example.com"
 
 ---
 
+## Export Directory and File Issues
+
+### "Could not create export directory: access is denied"
+
+**Cause:** Permissions issue in temp directory or disk full.
+
+**Solution:**
+1. Check temp directory permissions:
+   ```powershell
+   echo $env:TEMP
+   # Should show: C:\Users\<Username>\AppData\Local\Temp
+   ```
+
+2. Verify write permissions:
+   ```powershell
+   $exportDir = "$env:TEMP\export"
+   New-Item -Path $exportDir -ItemType Directory -Force
+   "test" | Out-File "$exportDir\test.txt"
+   Remove-Item "$exportDir\test.txt"
+   Remove-Item $exportDir
+   ```
+
+3. Check disk space:
+   ```powershell
+   Get-PSDrive C | Select-Object Used, Free
+   ```
+
+4. Run as administrator if necessary (though shouldn't be required for %TEMP%)
+
+---
+
+### "Export file already exists" or duplicate JSON files
+
+**Cause:** File naming conflict or rapid successive exports.
+
+**Solution:**
+
+The tool creates date-stamped directories and timestamped filenames:
+```
+%TEMP%\export\2026-01-07\
+├── message_1_2026-01-07T10-30-45.json
+├── message_2_2026-01-07T10-30-46.json
+```
+
+If you see conflicts:
+1. Wait 1 second between export operations
+2. Check if previous export is still running
+3. Manually delete old export directories if needed:
+   ```powershell
+   Remove-Item "$env:TEMP\export" -Recurse -Force
+   ```
+
+---
+
+### "Message ID not found" (searchandexport action)
+
+**Cause:** Invalid Message ID format or message doesn't exist in mailbox.
+
+**Solution:**
+
+1. **Verify Message ID format:**
+   - Must be enclosed in angle brackets: `<message-id@example.com>`
+   - Obtained from email headers (Internet Message ID)
+
+2. **Get valid Message ID from getinbox:**
+   ```powershell
+   # List recent messages with verbose mode
+   .\msgraphgolangtestingtool.exe -action getinbox -count 10 -verbose
+   ```
+
+3. **Get Message ID from Outlook:**
+   - Open the email
+   - File → Properties
+   - Look for "Internet headers" section
+   - Find the "Message-ID:" field (format: `<ABC123@server.com>`)
+
+4. **Example valid search:**
+   ```powershell
+   .\msgraphgolangtestingtool.exe -action searchandexport \
+       -tenantid "..." -clientid "..." -secret "..." \
+       -mailbox "user@example.com" \
+       -messageid "<CABcD123XYZ@mail.gmail.com>"
+   ```
+
+5. **Verify mailbox access:**
+   - Ensure you're searching the correct mailbox
+   - Message might have been deleted or moved to another folder
+
+---
+
+### JSON export files are too large or taking too long
+
+**Cause:** Exporting too many messages at once.
+
+**Solution:**
+
+1. **Reduce count:**
+   ```powershell
+   # Export in smaller batches
+   .\msgraphgolangtestingtool.exe -action exportinbox -count 10
+   ```
+
+2. **Monitor export progress:**
+   ```powershell
+   # Use verbose mode to see progress
+   .\msgraphgolangtestingtool.exe -action exportinbox -count 50 -verbose
+   ```
+
+3. **Check exported file sizes:**
+   ```powershell
+   $exportDir = Get-ChildItem "$env:TEMP\export" -Recurse -File | Sort-Object LastWriteTime -Descending
+   $exportDir | Select-Object Name, Length, LastWriteTime
+   ```
+
+---
+
 ## Verbose Mode Debugging
 
 Enable verbose mode to see detailed diagnostic information:
@@ -494,4 +612,8 @@ If you continue to experience issues:
 
 ---
 
-*Last Updated: 2026-01-04 - Version 1.15.1*
+*Last Updated: 2026-01-07 - Version 1.21.0*
+
+                          ..ooOO END OOoo..
+
+

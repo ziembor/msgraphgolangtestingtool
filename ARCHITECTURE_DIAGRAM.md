@@ -35,7 +35,9 @@ msgraphgolangtestingtool/
                            │   ├─► listEvents()      (-action getevents)
                            │   ├─► sendEmail()       (-action sendmail)
                            │   ├─► createInvite()    (-action sendinvite)
-                           │   └─► listInbox()       (-action getinbox)
+                           │   ├─► listInbox()       (-action getinbox)
+                           │   ├─► exportInbox()     (-action exportinbox)
+                           │   └─► searchAndExport() (-action searchandexport)
                            │
                            └─► Utility Functions
                                ├─► showVersion()
@@ -94,9 +96,19 @@ msgraphgolangtestingtool/
                           │   ├─► createRecipients()
                           │   └─► client.Users().ByUserId().Events().Post()
                           │
-                          └─► listInbox()
-                              └─► client.Users().ByUserId().Messages().Get()
-                                  └─► Returns: []models.Message
+                          ├─► listInbox()
+                          │   └─► client.Users().ByUserId().Messages().Get()
+                          │       └─► Returns: []models.Message
+                          │
+                          ├─► exportInbox()
+                          │   ├─► client.Users().ByUserId().Messages().Get()
+                          │   ├─► Create date-stamped directory (%TEMP%\export\{date})
+                          │   └─► Export each message to individual JSON file
+                          │
+                          └─► searchAndExport()
+                              ├─► client.Users().ByUserId().Messages().Get()
+                              │   └─► Filter by InternetMessageId
+                              └─► Export matching message to JSON file
 ```
 
 ### Validation & Helper Functions
@@ -378,11 +390,27 @@ Action-specific CSV files prevent schema conflicts:
 _msgraphgolangtestingtool_sendmail_2026-01-05.csv
 _msgraphgolangtestingtool_getevents_2026-01-05.csv
 _msgraphgolangtestingtool_getinbox_2026-01-05.csv
+_msgraphgolangtestingtool_exportinbox_2026-01-07.csv
+_msgraphgolangtestingtool_searchandexport_2026-01-07.csv
+```
+
+### 6. JSON Export Pattern (v1.21.0+)
+Export actions create date-stamped directories with individual JSON files:
+```
+%TEMP%\export\2026-01-07\
+├── message_1_2026-01-07T10-30-45.json
+├── message_2_2026-01-07T10-25-12.json
+├── message_3_2026-01-07T09-58-03.json
+└── message_search_2026-01-07T11-15-30.json (from searchandexport)
 ```
 
 ---
 
-**Version:** 1.17.1
-**Last Updated:** 2026-01-05
+**Version:** 1.21.0
+**Last Updated:** 2026-01-07
 **Total Lines of Code:** 2,949 (862 test + 1,462 source + 625 automation)
 **Test Coverage:** 24.6% (46 passing tests)
+
+                          ..ooOO END OOoo..
+
+
