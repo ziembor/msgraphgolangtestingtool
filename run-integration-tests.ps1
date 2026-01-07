@@ -50,15 +50,23 @@ if ($ShowEnv) {
     Write-Host ""
 
     if ($env:MSGRAPHTENANTID) {
-        $masked = $env:MSGRAPHTENANTID.Substring(0,4) + "****-****-****-****" + $env:MSGRAPHTENANTID.Substring($env:MSGRAPHTENANTID.Length-4)
-        Write-Host "  MSGRAPHTENANTID: $masked"
+        if ($env:MSGRAPHTENANTID.Length -ge 8) {
+            $masked = $env:MSGRAPHTENANTID.Substring(0,4) + "****-****-****-****" + $env:MSGRAPHTENANTID.Substring($env:MSGRAPHTENANTID.Length-4)
+            Write-Host "  MSGRAPHTENANTID: $masked"
+        } else {
+            Write-Host "  MSGRAPHTENANTID: ********"
+        }
     } else {
         Write-Warning "  MSGRAPHTENANTID: [NOT SET]"
     }
 
     if ($env:MSGRAPHCLIENTID) {
-        $masked = $env:MSGRAPHCLIENTID.Substring(0,4) + "****-****-****-****" + $env:MSGRAPHCLIENTID.Substring($env:MSGRAPHCLIENTID.Length-4)
-        Write-Host "  MSGRAPHCLIENTID: $masked"
+        if ($env:MSGRAPHCLIENTID.Length -ge 8) {
+            $masked = $env:MSGRAPHCLIENTID.Substring(0,4) + "****-****-****-****" + $env:MSGRAPHCLIENTID.Substring($env:MSGRAPHCLIENTID.Length-4)
+            Write-Host "  MSGRAPHCLIENTID: $masked"
+        } else {
+            Write-Host "  MSGRAPHCLIENTID: ********"
+        }
     } else {
         Write-Warning "  MSGRAPHCLIENTID: [NOT SET]"
     }
@@ -140,7 +148,7 @@ Write-Info "Building integration test tool..."
 Push-Location src
 
 try {
-    $buildOutput = go build -tags integration -o ../integration_test_tool.exe integration_test_tool.go msgraphgolangtestingtool_lib.go cert_windows.go 2>&1
+    $buildOutput = go build -tags integration -o ../integration_test_tool.exe 2>&1
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "❌ Build failed:"
