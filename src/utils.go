@@ -213,3 +213,44 @@ func Int32Ptr(i int32) *int32 {
 func pointerTo[T any](v T) *T {
 	return &v
 }
+
+// validateMessageID validates an Internet Message-ID to prevent OData injection attacks.
+// Message-IDs must follow RFC 5322 format: <local@domain>
+// This function blocks injection attempts by rejecting:
+// - Quote characters that could break OData filter syntax
+// - OData operators that could modify query logic
+// - Invalid Message-ID formats
+func validateMessageID(msgID string) error {
+	// Message-ID must not be empty
+	if msgID == "" {
+		return fmt.Errorf("message ID cannot be empty")
+	}
+
+	// Message-ID must be enclosed in angle brackets (RFC 5322)
+	if !strings.HasPrefix(msgID, "<") || !strings.HasSuffix(msgID, ">") {
+		return fmt.Errorf("must be enclosed in angle brackets: <local@domain>")
+	}
+
+	// Check length (RFC 5322: max 998 characters)
+	if len(msgID) > 998 {
+		return fmt.Errorf("exceeds maximum length of 998 characters")
+	}
+
+	// SECURITY: Reject quote characters that could break OData filter
+	// This prevents injection attacks like: ' or 1 eq 1 or '
+	if strings.ContainsAny(msgID, "'\"\\") {
+		return fmt.Errorf("contains invalid characters: quotes and backslashes not allowed")
+	}
+
+	// SECURITY: Reject OData operators to prevent filter manipulation
+	// This blocks injection patterns like: ' or internetMessageId eq '
+	msgIDLower := strings.ToLower(msgID)
+	odataKeywords := []string{" or ", " and ", " eq ", " ne ", " lt ", " gt ", " le ", " ge ", " not "}
+	for _, keyword := range odataKeywords {
+		if strings.Contains(msgIDLower, keyword) {
+			return fmt.Errorf("contains OData operators which are not allowed")
+		}
+	}
+
+	return nil
+}

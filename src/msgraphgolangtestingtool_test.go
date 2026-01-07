@@ -451,6 +451,62 @@ func TestValidateRFC3339Time(t *testing.T) {
 	}
 }
 
+// Test validateMessageID function - SECURITY: prevents OData injection attacks
+func TestValidateMessageID(t *testing.T) {
+	tests := []struct {
+		name    string
+		msgID   string
+		wantErr bool
+	}{
+		// Valid cases
+		{"valid standard", "<abc123@example.com>", false},
+		{"valid with dots", "<user.name@mail.example.com>", false},
+		{"valid with hyphens", "<message-id-123@mail.example.com>", false},
+		{"valid with plus", "<user+tag@example.com>", false},
+		{"valid with underscore", "<user_name@example.com>", false},
+		{"valid long ID", "<CABcD1234567890ABCDEFabcdef1234567890@mail.gmail.com>", false},
+
+		// Invalid cases - injection attempts (SECURITY TESTS)
+		{"injection or operator", "<test' or 1 eq 1 or internetMessageId eq 'x@example.com>", true},
+		{"injection and operator", "<test' and from/emailAddress/address eq 'victim@example.com>", true},
+		{"injection eq operator", "<test' eq 'x>", true},
+		{"injection ne operator", "<test' ne 'x>", true},
+		{"injection lt operator", "<test' lt 'x>", true},
+		{"injection gt operator", "<test' gt 'x>", true},
+		{"injection le operator", "<test' le 'x>", true},
+		{"injection ge operator", "<test' ge 'x>", true},
+		{"injection not operator", "<test' not 'x>", true},
+		{"uppercase injection OR", "<test' OR 1 eq 1>", true},
+		{"uppercase injection AND", "<test' AND 1 eq 1>", true},
+		{"uppercase injection EQ", "<test' EQ 'x>", true},
+
+		// Invalid cases - format violations
+		{"missing brackets", "abc123@example.com", true},
+		{"missing opening bracket", "abc123@example.com>", true},
+		{"missing closing bracket", "<abc123@example.com", true},
+		{"contains single quote", "<test'quote@example.com>", true},
+		{"contains double quote", "<test\"quote@example.com>", true},
+		{"contains backslash", "<test\\slash@example.com>", true},
+		{"empty string", "", true},
+		{"only brackets", "<>", false}, // Valid but unusual - RFC allows it
+		{"too long", "<" + strings.Repeat("a", 1000) + "@example.com>", true},
+
+		// Edge cases
+		{"whitespace in ID", "<test message@example.com>", false}, // Spaces are allowed in local part
+		{"numeric only", "<123456@example.com>", false},
+		{"special chars allowed", "<user!#$%&*+=?^_`{|}~@example.com>", false}, // RFC 5322 allows these
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMessageID(tt.msgID)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateMessageID(%q) error = %v, wantErr %v", tt.msgID, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // Test enhanced validateConfiguration with format checking
 func TestValidateConfigurationEnhanced(t *testing.T) {
 	tests := []struct {
