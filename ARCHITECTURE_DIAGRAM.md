@@ -2,7 +2,7 @@
 
 ## File Structure and Dependencies
 
-```
+```bash
 msgraphgolangtestingtool/
 ├── src/
 │   ├── msgraphgolangtestingtool.go  (Main CLI entry point)
@@ -19,7 +19,7 @@ msgraphgolangtestingtool/
 
 ## Main Application Flow
 
-```
+```bash
 ┌─────────────────────────────────────────────────────────────────┐
 │                    msgraphgolangtestingtool.go                   │
 │                        (Main Entry Point)                        │
@@ -49,7 +49,7 @@ msgraphgolangtestingtool/
 
 ### Authentication & Client Setup
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Authentication Layer                         │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -76,7 +76,7 @@ msgraphgolangtestingtool/
 
 ### Core Graph API Operations
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Microsoft Graph API Layer                    │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -113,7 +113,7 @@ msgraphgolangtestingtool/
 
 ### Validation & Helper Functions
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Validation & Utilities                       │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -150,7 +150,7 @@ msgraphgolangtestingtool/
 
 ## Test Suite Architecture
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                        Test Structure                           │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -195,7 +195,7 @@ msgraphgolangtestingtool/
 
 ## Certificate Authentication Flow (Windows)
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │              Windows Certificate Store Integration              │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -218,7 +218,7 @@ msgraphgolangtestingtool/
 
 ## Release Automation (run-integration-tests.ps1)
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Release Script Workflow                      │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -273,7 +273,7 @@ msgraphgolangtestingtool/
 
 ## Data Flow Example: Send Email with Attachments
 
-```
+```bash
 User Command:
   msgraphgolangtestingtool.exe -action sendmail -to "user@example.com"
     -subject "Test" -body "Hello" -attachment "file.pdf"
@@ -314,7 +314,7 @@ User Command:
 
 ## Test Coverage by Function Category
 
-```
+```bash
 ┌──────────────────────────────────────────────────────────────────┐
 │                    Coverage Summary (24.6%)                      │
 ├──────────────────────────────────────────────────────────────────┤
@@ -386,7 +386,7 @@ Build tags enable Windows-specific features while maintaining cross-platform sup
 
 ### 5. CSV Logging Pattern
 Action-specific CSV files prevent schema conflicts:
-```
+```bash
 _msgraphgolangtestingtool_sendmail_2026-01-05.csv
 _msgraphgolangtestingtool_getevents_2026-01-05.csv
 _msgraphgolangtestingtool_getinbox_2026-01-05.csv
@@ -396,7 +396,7 @@ _msgraphgolangtestingtool_searchandexport_2026-01-07.csv
 
 ### 6. JSON Export Pattern (v1.21.0+)
 Export actions create date-stamped directories with individual JSON files:
-```
+```bash
 %TEMP%\export\2026-01-07\
 ├── message_1_2026-01-07T10-30-45.json
 ├── message_2_2026-01-07T10-25-12.json
