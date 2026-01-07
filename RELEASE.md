@@ -24,12 +24,12 @@ Changelogs are stored as individual files in the `Changelog/` directory:
 
 ## 2. Automated Release (Recommended)
 
-The `release.ps1` script is the standard way to perform releases. It handles validation, file updates, and git operations automatically.
+The `run-integration-tests.ps1` script is the standard way to perform releases. It handles validation, file updates, and git operations automatically.
 
 ### Quick Start
 ```powershell
 # From project root
-.\release.ps1
+.\run-integration-tests.ps1
 ```
 
 ### What the Script Does
@@ -124,7 +124,7 @@ If a bad release is pushed:
 ## For Future AI Assistants
 
 To perform a release:
-1. **Prefer `.\release.ps1`** if interactive mode is possible.
+1. **Prefer `.\run-integration-tests.ps1`** if interactive mode is possible.
 2. **If manual:**
    - Read `src/VERSION`.
    - Increment to `1.x.y`.

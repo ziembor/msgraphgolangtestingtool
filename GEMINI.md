@@ -54,7 +54,7 @@ go build -C src -ldflags="-s -w" -o msgraphgolangtestingtool.exe
 
 Releases are automated via GitHub Actions when a tag is pushed.
 
-1.  **Recommended:** Use `.\release.ps1` for interactive release.
+1.  **Recommended:** Use `.\run-integration-tests.ps1` for interactive release.
 2.  **Manual:**
     *   Update `src/VERSION`.
     *   Create `Changelog/{version}.md`.

@@ -13,7 +13,7 @@ msgraphgolangtestingtool/
 │   ├── cert_stub.go                  (Cross-platform stub - +build !windows)
 │   ├── go.mod                        (Go module definition)
 │   └── VERSION                       (Version file - embedded at compile time)
-├── release.ps1                       (Release automation script)
+├── run-integration-tests.ps1                       (Release automation script)
 └── selfsignedcert.ps1               (Certificate generation utility)
 ```
 
@@ -216,7 +216,7 @@ msgraphgolangtestingtool/
                                   └─► Automatic cleanup via defer
 ```
 
-## Release Automation (release.ps1)
+## Release Automation (run-integration-tests.ps1)
 
 ```
 ┌────────────────────────────────────────────────────────────────┐

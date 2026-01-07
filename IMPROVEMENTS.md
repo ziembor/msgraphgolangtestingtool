@@ -1,12 +1,12 @@
 # Code Review & Improvement Opportunities
 
-**Version:** 1.16.8
-**Review Date:** 2026-01-04 (Updated: 2026-01-05)
-**Reviewer:** AI Code Analysis (Fresh Review)
+**Version:** 1.21.0
+**Review Date:** 2026-01-04 (Updated: 2026-01-07 - Security Review)
+**Reviewer:** AI Code Analysis (Fresh Review + Security Assessment)
 
 ## Executive Summary
 
-The Microsoft Graph EXO Mails/Calendar Golang Testing Tool is in **excellent condition** with clean architecture, comprehensive documentation, and solid test coverage. The codebase demonstrates professional development practices with:
+The Microsoft Graph EXO Mails/Calendar Golang Testing Tool is in **good condition** with clean architecture, comprehensive documentation, and solid test coverage. The codebase demonstrates professional development practices with:
 
 - ✅ **3,442 lines** of well-structured Go code
 - ✅ **24.6% test coverage** with 46 passing tests (improved from 14.0% with 24 tests)
@@ -20,7 +20,9 @@ The Microsoft Graph EXO Mails/Calendar Golang Testing Tool is in **excellent con
 - ✅ **Integration test architecture** fixed (completed v1.16.5)
 - ✅ **Unit test coverage** improved (completed v1.16.11)
 
-This review originally identified **8 improvement opportunities** focused on enhancing maintainability, test coverage, and security hardening. **Seven improvements have been completed** (87.5% completion rate) - see status updates below.
+**⚠️ CRITICAL SECURITY ISSUE IDENTIFIED:** A security review on 2026-01-07 discovered an **OData injection vulnerability** in the `searchAndExport` function (v1.21.0+) that allows authenticated users to bypass filter constraints and export arbitrary mailbox content. This is a HIGH severity issue requiring immediate remediation. See Recommendation #9 for details.
+
+This review originally identified **8 improvement opportunities** focused on enhancing maintainability, test coverage, and security hardening. **Seven improvements have been completed** (87.5% completion rate), and **one new critical security issue** has been identified in the recent v1.21.0 implementation - see status updates below.
 
 ---
 
@@ -851,22 +853,204 @@ The `enrichGraphAPIError()` function is integrated into all 4 API operations:
 ---
 
 
+### 9. Fix OData Injection Vulnerability in searchAndExport ⚠️ SECURITY - HIGH PRIORITY
+
+**Status:** IDENTIFIED in security review (2026-01-07) - PENDING FIX
+
+**Severity:** HIGH - Active Security Vulnerability
+**Category:** Injection Attack / Data Breach Risk
+**Confidence:** 85% (confirmed exploitable)
+
+**Security Issue:**
+
+The `searchAndExport()` function in `src/handlers.go:580` contains an **OData filter injection vulnerability** where the `-messageid` parameter is directly interpolated into an OData filter string without validation or sanitization.
+
+**Vulnerable Code (src/handlers.go:580):**
+```go
+func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, messageID string, config *Config, logger *CSVLogger) error {
+    // Configure request with filter
+    filter := fmt.Sprintf("internetMessageId eq '%s'", messageID)
+    //                                              ^^^ UNSAFE - no escaping or validation
+```
+
+**Current Validation (Insufficient):**
+The only validation in `src/config.go:432-436` checks for non-empty string:
+```go
+if config.Action == ActionSearchAndExport {
+    if config.MessageID == "" {
+        return fmt.Errorf("searchandexport action requires -messageid parameter")
+    }
+}
+// NO validation of: quotes, OData operators, format
+```
+
+**Exploit Scenario:**
+
+An attacker with access to run the tool can inject malicious OData operators to bypass filter constraints:
+
+```powershell
+# Attack 1: Export entire mailbox instead of single message
+.\msgraphgolangtestingtool.exe -action searchandexport \
+    -messageid "' or 1 eq 1 or internetMessageId eq '" \
+    -tenantid "..." -clientid "..." -secret "..." -mailbox "victim@example.com"
+
+# Constructs filter: internetMessageId eq '' or 1 eq 1 or internetMessageId eq ''
+# Result: Exports ALL messages in mailbox (complete data breach)
+
+# Attack 2: Filter by sender to target specific emails
+.\msgraphgolangtestingtool.exe -action searchandexport \
+    -messageid "' or from/emailAddress/address eq 'ceo@company.com' or internetMessageId eq '"
+
+# Result: Exports all emails from CEO (targeted data exfiltration)
+```
+
+**Impact:**
+- **Unauthorized Data Access:** Attacker can export messages beyond intended scope
+- **Privacy Violation:** Complete mailbox contents can be exfiltrated
+- **Compliance Risk:** GDPR/privacy violations from unauthorized email access
+- **Data Breach:** Sensitive email content, recipient information exposed
+- **Filter Bypass:** Intended search constraints completely circumvented
+
+**Recommendation:**
+
+**Priority 1: Input Validation (Required)**
+Add strict Message-ID format validation in `src/config.go`:
+
+```go
+// Add after line 436 in validateConfiguration()
+if config.Action == ActionSearchAndExport {
+    if config.MessageID == "" {
+        return fmt.Errorf("searchandexport action requires -messageid parameter")
+    }
+
+    // Validate Message-ID format (RFC 5322: <local@domain>)
+    if err := validateMessageID(config.MessageID); err != nil {
+        return fmt.Errorf("invalid message ID: %w", err)
+    }
+}
+
+// Add new validation function to src/utils.go:
+func validateMessageID(msgID string) error {
+    // Message-ID must be enclosed in angle brackets
+    if !strings.HasPrefix(msgID, "<") || !strings.HasSuffix(msgID, ">") {
+        return fmt.Errorf("must be enclosed in angle brackets: <local@domain>")
+    }
+
+    // Check length (RFC 5322: max 998 characters)
+    if len(msgID) > 998 {
+        return fmt.Errorf("exceeds maximum length of 998 characters")
+    }
+
+    // Reject quote characters that could break OData filter
+    if strings.ContainsAny(msgID, "'\"\\") {
+        return fmt.Errorf("contains invalid characters: quotes and backslashes not allowed")
+    }
+
+    // Reject OData operators
+    msgIDLower := strings.ToLower(msgID)
+    odataKeywords := []string{" or ", " and ", " eq ", " ne ", " lt ", " gt ", " le ", " ge "}
+    for _, keyword := range odataKeywords {
+        if strings.Contains(msgIDLower, keyword) {
+            return fmt.Errorf("contains OData operators which are not allowed")
+        }
+    }
+
+    return nil
+}
+```
+
+**Priority 2: OData Escaping (Defense-in-Depth)**
+Add quote escaping in `src/handlers.go:580`:
+
+```go
+// Escape single quotes using OData escaping rules (double the quote)
+escapedMessageID := strings.ReplaceAll(messageID, "'", "''")
+filter := fmt.Sprintf("internetMessageId eq '%s'", escapedMessageID)
+```
+
+**Priority 3: Unit Tests (Verification)**
+Add test cases to `src/msgraphgolangtestingtool_test.go`:
+
+```go
+func TestValidateMessageID(t *testing.T) {
+    tests := []struct {
+        name    string
+        msgID   string
+        wantErr bool
+    }{
+        // Valid cases
+        {"valid standard", "<abc123@example.com>", false},
+        {"valid with dots", "<user.name@mail.example.com>", false},
+
+        // Invalid cases - injection attempts
+        {"injection or operator", "<test' or 1 eq 1 or internetMessageId eq 'x@example.com>", true},
+        {"injection and operator", "<test' and from/emailAddress/address eq 'victim@example.com>", true},
+        {"missing brackets", "abc123@example.com", true},
+        {"contains single quote", "<test'quote@example.com>", true},
+        {"contains double quote", "<test\"quote@example.com>", true},
+        {"contains backslash", "<test\\slash@example.com>", true},
+        {"empty string", "", true},
+        {"too long", "<" + strings.Repeat("a", 1000) + "@example.com>", true},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            err := validateMessageID(tt.msgID)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("validateMessageID() error = %v, wantErr %v", err, tt.wantErr)
+            }
+        })
+    }
+}
+```
+
+**Benefits:**
+- ✅ Prevents OData injection attacks
+- ✅ Protects mailbox data from unauthorized access
+- ✅ Enforces RFC 5322 Message-ID format
+- ✅ Defense-in-depth with validation + escaping
+- ✅ Comprehensive test coverage for security
+- ✅ Maintains functionality for legitimate use cases
+
+**Estimated Effort:** 1-2 hours
+**Impact:** CRITICAL (prevents data breach vulnerability)
+**Risk if Not Fixed:** HIGH - Active exploitable vulnerability allowing complete mailbox exfiltration
+
+**Related Actions:**
+- `exportinbox` - Not vulnerable (no user-controlled filter)
+- Other actions - No similar injection points identified
+
+**Testing Checklist:**
+- [ ] Add `validateMessageID()` function to `src/utils.go`
+- [ ] Update `validateConfiguration()` in `src/config.go` to call validation
+- [ ] Add quote escaping to `searchAndExport()` in `src/handlers.go`
+- [ ] Add comprehensive unit tests for validation function
+- [ ] Test with malicious Message-ID inputs to verify blocking
+- [ ] Test with legitimate Message-ID to verify functionality
+- [ ] Update `SECURITY.md` with information about this fix
+- [ ] Create changelog entry for security fix
+
+---
+
+
 ## Summary by Priority
 
 | Priority | Count | Recommendations | Status |
 |----------|-------|----------------|--------|
+| **CRITICAL** | 1 | #9: Fix OData injection vulnerability | ⚠️ PENDING (security issue) |
 | **High** | 1 | #8: Integration test architecture | ✅ COMPLETED (v1.16.5) |
 | **Medium-High** | 1 | #2: Input sanitization for file paths | ✅ COMPLETED (v1.16.8) |
 | **Medium** | 2 | #1: Increase test coverage, #3: Retry logic | ✅ #1 COMPLETED (v1.16.11), ✅ #3 COMPLETED (v1.16.0) |
 | **Low-Medium** | 1 | #4: Structured logging | ✅ COMPLETED (v1.16.8) |
 | **Low** | 3 | #5: Integration tests, #6: Auto-completion, #7: Rate limit handling | ✅ #6 COMPLETED (v1.16.10), ✅ #7 COMPLETED (v1.16.9), ⏳ #5 PENDING |
 
-**Total:** 8 recommendations
-**Completed:** 7 (87.5%)
-**Remaining:** 1 (12.5%)
+**Total:** 9 recommendations
+**Completed:** 7 (77.8%)
+**Security Issues:** 1 CRITICAL (pending fix)
+**Remaining:** 2 (22.2%) - 1 critical security, 1 optional enhancement
 **Original Estimated Effort:** 12-18 hours
 **Effort Spent:** ~14 hours on completed items
-**Remaining Effort:** ~4-6 hours (optional integration tests enhancement)
+**Remaining Effort:** ~5-8 hours (1-2 hours security fix + 4-6 hours optional integration tests)
 **Impact Delivered:** Critical architecture fix, security hardening, network resilience, maintainability improvements, error handling enhancement, UX improvements, comprehensive unit test coverage
 
 ---
@@ -950,9 +1134,16 @@ The `enrichGraphAPIError()` function is integrated into all 4 API operations:
 
 ## Final Assessment
 
-**Overall Grade: A** (upgraded from A- after implementing critical improvements)
+**Overall Grade: B+** (downgraded from A due to critical security vulnerability)
 
-The codebase is production-ready with excellent architecture and documentation. **Three critical improvements have been successfully implemented** (v1.16.5 and v1.16.8), significantly enhancing security, maintainability, and build reliability.
+The codebase has excellent architecture and documentation, but **contains a critical security vulnerability** that must be addressed before production use. **Seven improvements have been successfully implemented** (v1.16.0 - v1.16.10), significantly enhancing maintainability, network resilience, and user experience.
+
+**⚠️ Critical Security Issue:**
+- **OData Injection Vulnerability** in `searchAndExport()` function (v1.21.0+)
+- Allows authenticated users to bypass filter constraints and export arbitrary mailbox content
+- **MUST BE FIXED** before deploying v1.21.0+ to production
+- Estimated fix time: 1-2 hours
+- See Recommendation #9 for detailed remediation guidance
 
 **Key Strengths:**
 - ✅ Professional code structure
@@ -970,10 +1161,13 @@ The codebase is production-ready with excellent architecture and documentation. 
 4. ✅ Added structured logging with log levels - improved maintainability (v1.16.8)
 5. ✅ Implemented rate limit handling - enhanced error diagnostics (v1.16.9)
 6. ✅ Added command-line auto-completion - UX enhancement (v1.16.10)
+7. ✅ Increased unit test coverage - comprehensive testing (v1.16.11)
+
+**Immediate Action Required:**
+1. ⚠️ **FIX CRITICAL:** OData injection vulnerability in searchAndExport (1-2 hours, CRITICAL security) - #9
 
 **Recommended Next Steps:**
-1. Increase test coverage to 25-30% (2-3 hours, MEDIUM maintenance value) - #1
-2. Add enhanced integration test suite (4-6 hours, OPTIONAL) - #5
+1. Add enhanced integration test suite (4-6 hours, OPTIONAL) - #5
 
 ---
 
@@ -1110,6 +1304,17 @@ src/
 - Upgraded final assessment grade from A- to A
 - Updated test count from 24 to 42 tests
 - Added architecture verification details for #8
+
+**2026-01-07 (Security Review):**
+- ⚠️ **CRITICAL SECURITY ISSUE IDENTIFIED** - Added #9 (OData Injection Vulnerability)
+- Security review conducted on documentation PR for v1.21.0 features
+- Identified HIGH severity OData injection vulnerability in `searchAndExport()` function
+- Vulnerability allows authenticated users to bypass filter constraints and export arbitrary mailbox data
+- Updated executive summary with security warning
+- Downgraded overall assessment from A to B+ due to critical security issue
+- Updated summary table: 9 total recommendations (7 completed, 1 critical pending, 1 optional pending)
+- Added comprehensive remediation guidance with code examples and test cases
+- **ACTION REQUIRED:** Fix before deploying v1.21.0+ to production
 
 **Original Review Date:** 2026-01-04 (v1.15.3)
 
