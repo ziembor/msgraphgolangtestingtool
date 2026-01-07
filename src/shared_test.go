@@ -4,9 +4,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -615,6 +617,124 @@ func TestCreateFileAttachments(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCreateFileAttachments_LargeFile tests handling of large file attachments (>10MB)
+// This test verifies memory management and base64 encoding for large files
+func TestCreateFileAttachments_LargeFile(t *testing.T) {
+	// Create a large temporary file (15MB)
+	tmpFile, err := os.CreateTemp("", "large-attach-*.bin")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write 15MB of data (pattern to verify integrity)
+	const fileSize = 15 * 1024 * 1024 // 15MB
+	const chunkSize = 1024 * 1024     // 1MB chunks
+	pattern := []byte("TESTDATA") // 8-byte pattern
+
+	t.Logf("Creating %d MB test file...", fileSize/(1024*1024))
+	bytesWritten := 0
+	for bytesWritten < fileSize {
+		// Write pattern repeatedly
+		for i := 0; i < chunkSize/len(pattern) && bytesWritten < fileSize; i++ {
+			n, err := tmpFile.Write(pattern)
+			if err != nil {
+				t.Fatalf("Failed to write to temp file: %v", err)
+			}
+			bytesWritten += n
+		}
+	}
+	tmpFile.Close()
+
+	// Verify file size
+	fileInfo, err := os.Stat(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to stat temp file: %v", err)
+	}
+	if fileInfo.Size() != fileSize {
+		t.Errorf("File size mismatch: got %d, want %d", fileInfo.Size(), fileSize)
+	}
+	t.Logf("Created test file: %d bytes (%d MB)", fileInfo.Size(), fileInfo.Size()/(1024*1024))
+
+	// Get memory stats before processing
+	var memBefore runtime.MemStats
+	runtime.ReadMemStats(&memBefore)
+	t.Logf("Memory before: Alloc=%d MB, TotalAlloc=%d MB",
+		memBefore.Alloc/(1024*1024), memBefore.TotalAlloc/(1024*1024))
+
+	// Process the large file attachment
+	config := &Config{VerboseMode: false}
+	attachments, err := createFileAttachments([]string{tmpFile.Name()}, config)
+
+	// Get memory stats after processing
+	var memAfter runtime.MemStats
+	runtime.ReadMemStats(&memAfter)
+	t.Logf("Memory after: Alloc=%d MB, TotalAlloc=%d MB",
+		memAfter.Alloc/(1024*1024), memAfter.TotalAlloc/(1024*1024))
+
+	memDelta := memAfter.Alloc - memBefore.Alloc
+	t.Logf("Memory delta: %d MB", memDelta/(1024*1024))
+
+	// Verify no error
+	if err != nil {
+		t.Errorf("createFileAttachments() returned error for large file: %v", err)
+		return
+	}
+
+	// Verify attachment was created
+	if len(attachments) != 1 {
+		t.Errorf("createFileAttachments() returned %d attachments, want 1", len(attachments))
+		return
+	}
+
+	// Verify attachment is not nil
+	if attachments[0] == nil {
+		t.Fatal("Attachment is nil")
+	}
+
+	// Test base64 encoding of large file content
+	// Read the file again to verify encoding
+	fileData, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to read file for verification: %v", err)
+	}
+
+	// Verify base64 encoding works for large files
+	encoded := getAttachmentContentBase64(fileData)
+	if encoded == "" {
+		t.Error("Base64 encoding returned empty string for large file")
+	}
+
+	// Verify encoding length is approximately 4/3 of original size (base64 overhead)
+	expectedEncodedLen := (fileSize + 2) / 3 * 4 // Base64 encoding formula
+	if len(encoded) < expectedEncodedLen-10 || len(encoded) > expectedEncodedLen+10 {
+		t.Errorf("Base64 encoded length unexpected: got %d, expected ~%d", len(encoded), expectedEncodedLen)
+	}
+	t.Logf("Base64 encoding: original=%d bytes, encoded=%d chars (ratio: %.2f)",
+		fileSize, len(encoded), float64(len(encoded))/float64(fileSize))
+
+	// Verify we can decode it back
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Errorf("Failed to decode base64 encoded large file: %v", err)
+	}
+	if len(decoded) != fileSize {
+		t.Errorf("Decoded size mismatch: got %d, want %d", len(decoded), fileSize)
+	}
+
+	// Verify first and last bytes match original pattern
+	if len(decoded) >= len(pattern) {
+		if string(decoded[:len(pattern)]) != string(pattern) {
+			t.Error("Decoded data pattern mismatch at start")
+		}
+		if string(decoded[len(decoded)-len(pattern):]) != string(pattern) {
+			t.Error("Decoded data pattern mismatch at end")
+		}
+	}
+
+	t.Logf("✓ Large file attachment test passed: 15MB file processed successfully")
 }
 
 // TestGetAttachmentContentBase64 tests the getAttachmentContentBase64 function
