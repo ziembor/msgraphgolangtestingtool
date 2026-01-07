@@ -433,6 +433,11 @@ func validateConfiguration(config *Config) error {
 		if config.MessageID == "" {
 			return fmt.Errorf("searchandexport action requires -messageid parameter")
 		}
+
+		// SECURITY: Validate Message-ID format to prevent OData injection attacks
+		if err := validateMessageID(config.MessageID); err != nil {
+			return fmt.Errorf("invalid message ID: %w", err)
+		}
 	}
 
 	return nil

@@ -12,6 +12,69 @@ Please include as much information as possible to help us reproduce the issue. W
 
 ---
 
+## Security Vulnerabilities Fixed
+
+### CVE-2026-MSGRAPH-001: OData Injection in searchAndExport (v1.21.0 - v1.21.0)
+
+**Discovered:** 2026-01-07
+**Fixed in:** v1.21.1
+**Severity:** HIGH
+**CVSS Score:** 7.5 (High)
+
+**Vulnerability Description:**
+
+An OData injection vulnerability was discovered in the `searchAndExport` function that allowed authenticated users to bypass filter constraints and export arbitrary mailbox content. The `-messageid` parameter was directly interpolated into an OData filter string without validation or sanitization, enabling injection of malicious OData operators.
+
+**Attack Scenario:**
+```powershell
+# Malicious input that bypasses filtering
+./msgraphgolangtestingtool.exe -action searchandexport \
+    -messageid "' or 1 eq 1 or internetMessageId eq '" \
+    -tenantid "..." -clientid "..." -secret "..." -mailbox "victim@example.com"
+
+# Result: Exports entire mailbox instead of single message
+```
+
+**Impact:**
+- Unauthorized access to mailbox data
+- Privacy violations (GDPR, HIPAA, etc.)
+- Potential data breach with sensitive email content
+- Filter bypass allowing targeted data exfiltration
+
+**Affected Versions:**
+- v1.21.0 (released 2026-01-06)
+
+**Fix Details:**
+
+The vulnerability was fixed with a defense-in-depth approach:
+
+1. **Input Validation (Primary Defense):**
+   - Added `validateMessageID()` function in `src/utils.go`
+   - Enforces RFC 5322 Message-ID format: `<local@domain>`
+   - Rejects quote characters (`'`, `"`, `\`)
+   - Rejects OData operators (`or`, `and`, `eq`, `ne`, `lt`, `gt`, `le`, `ge`, `not`)
+   - Validates length (max 998 characters per RFC 5322)
+
+2. **OData Escaping (Defense-in-Depth):**
+   - Added quote escaping in `searchAndExport()` function
+   - Single quotes escaped using OData escaping rules (`'` → `''`)
+
+3. **Comprehensive Testing:**
+   - 30+ unit tests covering injection attempts
+   - Tests validate both uppercase and lowercase operator injection
+   - Tests verify RFC 5322 format enforcement
+
+**Remediation:**
+- **If using v1.21.0:** Immediately upgrade to v1.21.1 or later
+- **Security Assessment:** Review CSV logs (`_msgraphgolangtestingtool_searchandexport_*.csv`) for suspicious Message-ID patterns containing quotes or OData operators
+- **Audit Mailbox Access:** Check Microsoft 365 audit logs for unauthorized mailbox access between 2026-01-06 and upgrade date
+
+**Credit:**
+- Discovered by: AI Security Review
+- Fixed by: Development Team
+
+---
+
 # Security Best Practices
 
 This guide outlines security best practices for using the Microsoft Graph EXO Mails/Calendar Golang Testing Tool in production environments.
