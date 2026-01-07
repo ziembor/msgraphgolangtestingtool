@@ -49,7 +49,7 @@ Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 
 To cut a new release, use the automated script:
 ```powershell
-.\release.ps1
+.\run-integration-tests.ps1
 ```
 
 ## Troubleshooting

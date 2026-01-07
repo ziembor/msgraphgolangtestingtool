@@ -1,6 +1,6 @@
 # Release Script Dry-Run Example
 
-This document shows exactly what happens when you run `.\release.ps1`
+This document shows exactly what happens when you run `.\run-integration-tests.ps1`
 
 ## Current State
 
@@ -94,7 +94,7 @@ Enter changelog entries (press Enter on empty line to finish each section)
 [Changed] Changes to existing functionality:
   - Changed default action from getevents to getinbox
   - Updated all documentation to reflect new default
-  - Created interactive release script (release.ps1)
+  - Created interactive release script (run-integration-tests.ps1)
   - Added comprehensive release documentation (RELEASE.md)
   -
 ```
@@ -124,7 +124,7 @@ Changelog entry:
 
 - Changed default action from getevents to getinbox
 - Updated all documentation to reflect new default
-- Created interactive release script (release.ps1)
+- Created interactive release script (run-integration-tests.ps1)
 - Added comprehensive release documentation (RELEASE.md)
 ------------------------
 
@@ -158,7 +158,7 @@ Release v1.16.2 - Patch Release
 
 - Changed default action from getevents to getinbox
 - Updated all documentation to reflect new default
-- Created interactive release script (release.ps1)
+- Created interactive release script (run-integration-tests.ps1)
 - Added comprehensive release documentation (RELEASE.md)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -501,7 +501,7 @@ Version history maintained in:
 See **[RELEASE.md](RELEASE.md)** for comprehensive release documentation.
 
 ```powershell
-.\release.ps1
+.\run-integration-tests.ps1
 ```
 
                           ..ooOO END OOoo..

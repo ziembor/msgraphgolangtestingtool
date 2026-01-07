@@ -73,7 +73,7 @@ msgraphgolangtestingtool/
 │   ├── go.sum                    # Go dependencies
 │   ├── VERSION                   # Version file (embedded at compile time)
 │   └── *.ps1                     # PowerShell scripts (if any)
-├── release.ps1                   # Release automation script (project root)
+├── run-integration-tests.ps1                   # Release automation script (project root)
 ├── selfsignedcert.ps1            # Certificate generation script (project root)
 ├── Changelog/                    # Version changelogs
 ├── CLAUDE.md                     # Project documentation (this file)
@@ -108,7 +108,7 @@ See **[BUILD.md](BUILD.md)** for more details.
 
 ```powershell
 # From project root
-.\release.ps1
+.\run-integration-tests.ps1
 ```
 
 See **[RELEASE.md](RELEASE.md)** for the complete release guide.
