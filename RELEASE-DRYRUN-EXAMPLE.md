@@ -223,7 +223,7 @@ Pushing to origin/main...
 
 ---
 
-### Step 8: Create Git Tag (⚡ TRIGGERS GITHUB ACTIONS)
+### Step 8: Create Git Tag (⚡TRIGGERS GITHUB ACTIONS)
 
 ```
 ========================================
@@ -343,7 +343,7 @@ Next steps:
 src/VERSION:
 1.16.1
 
-Changelog/:
+Changelog/: 
   1.16.1.md
 ```
 
@@ -353,7 +353,7 @@ Changelog/:
 src/VERSION:
 1.16.2
 
-Changelog/:
+Changelog/: 
   1.16.1.md
   1.16.2.md  ← NEW
 
@@ -497,6 +497,8 @@ Version history maintained in:
 ---
 
 **Ready to run the real release?**
+
+See **[RELEASE.md](RELEASE.md)** for comprehensive release documentation.
 
 ```powershell
 .\release.ps1
