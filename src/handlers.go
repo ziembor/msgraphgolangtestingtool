@@ -577,7 +577,10 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailbox string, messageID string, config *Config, logger *CSVLogger) error {
 	// Configure request with filter
 	// Note: We search the whole mailbox (Messages endpoint), not just Inbox
-	filter := fmt.Sprintf("internetMessageId eq '%s'", messageID)
+	// SECURITY: Escape single quotes for OData filter (defense-in-depth)
+	// Even though validateMessageID() blocks quotes, we escape as an additional safeguard
+	escapedMessageID := strings.ReplaceAll(messageID, "'", "''")
+	filter := fmt.Sprintf("internetMessageId eq '%s'", escapedMessageID)
 	requestConfig := &users.ItemMessagesRequestBuilderGetRequestConfiguration{
 		QueryParameters: &users.ItemMessagesRequestBuilderGetQueryParameters{
 			Filter: &filter,

@@ -4,7 +4,7 @@
 **Reviewer:** Claude Code
 **Scope:** Recent commits (v1.16.11 → v1.17.1)
 - Unit test additions (7 new tests)
-- Security scanner implementation (release.ps1)
+- Security scanner implementation (run-integration-tests.ps1)
 - Documentation updates
 
 ---
@@ -232,7 +232,7 @@ This is a sophisticated test that catches a subtle bug where a function might re
 
 ---
 
-## 2. Security Scanner Review (release.ps1)
+## 2. Security Scanner Review (run-integration-tests.ps1)
 
 ### 2.1 Pattern Definitions ✅ VERY GOOD
 
@@ -608,7 +608,7 @@ The code is production-ready as-is.
 
 ### Priority 2: Nice-to-Have Enhancements
 
-1. **Security Scanner (release.ps1):**
+1. **Security Scanner (run-integration-tests.ps1):**
    - Add JWT token pattern detection
    - Add progress indicator for large repos
    - Consider parallel scanning for performance
