@@ -87,8 +87,38 @@ $secretPatterns = @{
     "Azure AD Client Secret" = "[a-zA-Z0-9~_-]{34,}"  # Pattern like z3P8Q~...
     "GUID/UUID" = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
     "Email addresses" = "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    "API Keys" = "(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)[\s:=]+['\"]?[a-zA-Z0-9_-]{20,}['\"]?"
+    "API Keys" = "(api[_-]?key|apikey|access[_-]?token|secret[_-]?key)[\s:=]+['`"]?[a-zA-Z0-9_-]{20,}['`"]?"
 }
+
+# False positive filtering patterns - extracted for easier maintenance
+$placeholderPatterns = @(
+    "^x+$"              # All x's (e.g., xxx, xxxx)
+    "^y+$"              # All y's (e.g., yyy, yyyy)
+    "xxx"               # Contains xxx
+    "yyy"               # Contains yyy
+    "example\.com"      # Example domain
+    "user@example"      # Example user email
+    "tenant-guid"       # Placeholder tenant ID
+    "client-guid"       # Placeholder client ID
+    "your-.*-here"      # Template patterns (e.g., your-secret-here)
+    "test-tenant-id"    # Test placeholder
+    "test-client-id"    # Test placeholder
+)
+
+$knownSafeEmails = @(
+    "noreply@anthropic\.com"    # Claude Code attribution
+    "example@example\.com"       # Generic example
+    "test@example\.com"          # Test example
+    "user@example\.com"          # User example
+    "admin@example\.com"         # Admin example
+)
+
+$knownSafeGUIDs = @(
+    "00000000-0000-0000-0000-000000000000"    # Null GUID
+    "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"    # Placeholder GUID
+    "12345678-1234-1234-1234-123456789012"    # Example GUID (from tests)
+    "abcdefgh-5678-9012-abcd-ef1234567890"    # Example GUID (from tests)
+)
 
 # Files/paths to scan
 $filesToScan = @(
@@ -98,53 +128,106 @@ $filesToScan = @(
     "src/*.go"
 )
 
-$secretsFound = @()
-
+# Collect all files to scan (for progress tracking)
+Write-Info "Collecting files to scan..."
+$allFiles = @()
 foreach ($pattern in $filesToScan) {
     $files = Get-ChildItem -Path $pattern -Recurse -ErrorAction SilentlyContinue
-
     foreach ($file in $files) {
         # Skip files that should have example secrets
         if ($file.Name -match "EXAMPLES|README|CLAUDE|IMPROVEMENTS|UNIT_TESTS") {
             continue
         }
+        $allFiles += $file
+    }
+}
 
-        $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
-        if (-not $content) { continue }
+$totalFiles = $allFiles.Count
+Write-Info "Scanning $totalFiles files for secrets..."
 
-        foreach ($secretType in $secretPatterns.Keys) {
-            $regex = $secretPatterns[$secretType]
+$secretsFound = @()
+$fileCount = 0
 
-            if ($content -match $regex) {
-                $matches = [regex]::Matches($content, $regex)
+foreach ($file in $allFiles) {
+    $fileCount++
 
-                foreach ($match in $matches) {
-                    $value = $match.Value
+    # Update progress every 5 files or at milestones
+    if ($fileCount % 5 -eq 0 -or $fileCount -eq 1 -or $fileCount -eq $totalFiles) {
+        $percentComplete = [math]::Round(($fileCount / $totalFiles) * 100, 1)
+        Write-Progress -Activity "Security Scan: Checking for secrets" `
+                       -Status "Processing file $fileCount of $totalFiles ($percentComplete%)" `
+                       -PercentComplete $percentComplete `
+                       -CurrentOperation $file.Name
+    }
 
-                    # Skip if it's a placeholder pattern
-                    if ($value -match "^x+$|^y+$|xxx|yyy|example\.com|user@example|tenant-guid|client-guid|your-.*-here") {
+    $content = Get-Content $file.FullName -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { continue }
+
+    foreach ($secretType in $secretPatterns.Keys) {
+        $regex = $secretPatterns[$secretType]
+
+        if ($content -match $regex) {
+            $matches = [regex]::Matches($content, $regex)
+
+            foreach ($match in $matches) {
+                $value = $match.Value
+
+                # Skip if it's a placeholder pattern
+                $isPlaceholder = $false
+                foreach ($pattern in $placeholderPatterns) {
+                    if ($value -match $pattern) {
+                        $isPlaceholder = $true
+                        break
+                    }
+                }
+                if ($isPlaceholder) {
+                    continue
+                }
+
+                # Skip known safe emails
+                if ($secretType -eq "Email addresses") {
+                    $isSafeEmail = $false
+                    foreach ($safeEmail in $knownSafeEmails) {
+                        if ($value -match $safeEmail) {
+                            $isSafeEmail = $true
+                            break
+                        }
+                    }
+                    if ($isSafeEmail) {
                         continue
                     }
+                }
 
-                    # Skip common false positives
-                    if ($secretType -eq "Email addresses" -and $value -match "noreply@anthropic\.com|example@example\.com|test@example\.com|user@example\.com") {
+                # Skip known safe GUIDs
+                if ($secretType -eq "GUID/UUID") {
+                    $isSafeGUID = $false
+                    foreach ($safeGUID in $knownSafeGUIDs) {
+                        if ($value -eq $safeGUID) {
+                            $isSafeGUID = $true
+                            break
+                        }
+                    }
+                    if ($isSafeGUID) {
                         continue
                     }
+                }
 
-                    # Get line number
-                    $lineNumber = ($content.Substring(0, $match.Index) -split "`n").Count
+                # Get line number
+                $lineNumber = ($content.Substring(0, $match.Index) -split "`n").Count
 
-                    $secretsFound += [PSCustomObject]@{
-                        File = $file.FullName.Replace((Get-Location).Path + "\", "")
-                        Line = $lineNumber
-                        Type = $secretType
-                        Value = if ($value.Length -gt 40) { $value.Substring(0, 40) + "..." } else { $value }
-                    }
+                $secretsFound += [PSCustomObject]@{
+                    File = $file.FullName.Replace((Get-Location).Path + "\", "")
+                    Line = $lineNumber
+                    Type = $secretType
+                    Value = if ($value.Length -gt 40) { $value.Substring(0, 40) + "..." } else { $value }
                 }
             }
         }
     }
 }
+
+# Complete the progress indicator
+Write-Progress -Activity "Security Scan: Checking for secrets" -Completed
 
 if ($secretsFound.Count -gt 0) {
     Write-Error "Potential secrets detected in repository!"

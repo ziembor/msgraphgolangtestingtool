@@ -584,7 +584,605 @@ Tests run automatically on:
 - `test-results/README.md` - Test results archive
 - `CLAUDE.md` - Project documentation
 
+---
+
+## Troubleshooting
+
+This section covers common issues you may encounter when running unit tests and how to resolve them.
+
+### Test Failures on Windows vs Linux
+
+**Issue:** Path separator differences causing test failures
+
+**Symptoms:**
+- Tests pass on Windows but fail on Linux/macOS (or vice versa)
+- Path-related assertions fail with backslash vs forward slash issues
+- Error messages like: `got "C:\temp\file.txt", want "/tmp/file.txt"`
+
+**Root Cause:**
+Windows uses backslash (`\`) as path separator, while Linux/macOS use forward slash (`/`).
+
+**Solution:**
+Use `filepath.Join()` instead of string concatenation for paths:
+
+```go
+// ❌ Bad: Hard-coded path separator
+path := "src" + "/" + "file.go"
+
+// ✅ Good: Cross-platform path construction
+path := filepath.Join("src", "file.go")
+```
+
+**Example Fix:**
+```go
+// Before (platform-specific)
+expected := "test-results/output.txt"
+
+// After (cross-platform)
+expected := filepath.Join("test-results", "output.txt")
+```
+
+---
+
+### Temporary File Location Differences
+
+**Issue:** Tests fail because temporary file paths differ between platforms
+
+**Platforms:**
+- **Windows:** `%TEMP%` (typically `C:\Users\<user>\AppData\Local\Temp`)
+- **Linux/macOS:** `/tmp`
+
+**Solution:**
+Use `os.TempDir()` or `os.CreateTemp()` for portable temporary file handling:
+
+```go
+// ❌ Bad: Hard-coded temp directory
+tmpFile := "/tmp/test-file.txt"
+
+// ✅ Good: Cross-platform temp directory
+tmpDir := os.TempDir()
+tmpFile := filepath.Join(tmpDir, "test-file.txt")
+
+// ✅ Best: Use os.CreateTemp() with automatic cleanup
+tmpFile, err := os.CreateTemp("", "test-*.txt")
+if err != nil {
+    t.Fatalf("Failed to create temp file: %v", err)
+}
+defer os.Remove(tmpFile.Name())
+```
+
+---
+
+### Coverage Report Not Generating
+
+**Issue:** Coverage report fails to generate or `coverage.out` file is missing
+
+**Possible Causes:**
+1. `go tool cover` not installed or not in PATH
+2. Write permissions issue in `src/` directory
+3. No tests executed (all skipped)
+
+**Solutions:**
+
+**1. Verify go tool cover is available:**
+```bash
+go tool cover -h
+```
+
+If the command fails, reinstall Go or check PATH configuration.
+
+**2. Check write permissions:**
+```bash
+# Linux/macOS
+ls -la src/
+
+# Windows PowerShell
+Get-Acl src/
+```
+
+Ensure you have write permissions in the `src/` directory.
+
+**3. Verify tests are running:**
+```bash
+cd src
+go test -v  # Should show test execution
+
+# If all tests are skipped:
+go test -v -count=1  # Disable test caching
+```
+
+**4. Specify full path for coverage file:**
+```bash
+cd src
+go test -coverprofile=$(pwd)/coverage.out
+go tool cover -html=$(pwd)/coverage.out
+```
+
+---
+
+### Tests Timing Out
+
+**Issue:** Tests exceed default timeout and are killed
+
+**Symptoms:**
+```
+panic: test timed out after 10m0s
+```
+
+**Cause:**
+Default Go test timeout is 10 minutes. Tests with network calls, large file processing, or slow operations may exceed this.
+
+**Solution:**
+Increase timeout with `-timeout` flag:
+
+```bash
+# Increase to 20 minutes
+go test -v -timeout 20m
+
+# Increase to 1 hour (for very slow tests)
+go test -v -timeout 1h
+
+# Disable timeout (not recommended)
+go test -v -timeout 0
+```
+
+**Best Practice:**
+Optimize slow tests instead of increasing timeout:
+- Use smaller test files
+- Mock external dependencies
+- Parallelize independent tests with `t.Parallel()`
+
+---
+
+### Build Cache Issues
+
+**Issue:** Tests pass/fail inconsistently due to cached results
+
+**Symptoms:**
+- Test results don't change after code modifications
+- Old test outputs appear despite code changes
+- `PASS (cached)` appears in test output
+
+**Solution:**
+Disable test caching:
+
+```bash
+# Disable cache for single run
+go test -count=1
+
+# Clear entire build cache
+go clean -testcache
+
+# Clear all caches (build + module)
+go clean -cache -testcache -modcache
+```
+
+---
+
+### Import Errors After Refactoring
+
+**Issue:** Tests fail with "undefined" or "not found" errors after moving functions
+
+**Symptoms:**
+```
+undefined: myFunction
+```
+
+**Cause:**
+Function moved to different file but tests not updated.
+
+**Solution:**
+1. Verify function is exported (starts with capital letter)
+2. Check function location (use `grep` or IDE "Go to Definition")
+3. Rebuild test binary:
+
+```bash
+go clean -testcache
+go test -v
+```
+
+---
+
+### Race Condition Failures
+
+**Issue:** Tests fail intermittently with race detector enabled
+
+**Symptoms:**
+```
+WARNING: DATA RACE
+```
+
+**Enable race detector:**
+```bash
+go test -race
+```
+
+**Common Causes:**
+- Concurrent map access without locks
+- Shared variables accessed by goroutines
+- Missing synchronization primitives
+
+**Solution:**
+Add proper synchronization:
+
+```go
+// ❌ Bad: Concurrent map access
+var cache = make(map[string]string)
+go func() { cache["key"] = "value" }()
+
+// ✅ Good: Use mutex or sync.Map
+var mu sync.Mutex
+var cache = make(map[string]string)
+go func() {
+    mu.Lock()
+    cache["key"] = "value"
+    mu.Unlock()
+}()
+```
+
+---
+
+## CI/CD Integration
+
+This section provides ready-to-use examples for integrating unit tests into your CI/CD pipelines.
+
+### GitHub Actions
+
+Add to `.github/workflows/test.yml`:
+
+```yaml
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'  # Use your Go version
+          cache: true
+
+      - name: Download dependencies
+        run: |
+          cd src
+          go mod download
+
+      - name: Run unit tests
+        run: |
+          cd src
+          go test -v -coverprofile=coverage.out
+
+      - name: Generate coverage report
+        run: |
+          cd src
+          go tool cover -func=coverage.out
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./src/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: src/coverage.html
+```
+
+**Features:**
+- ✅ Runs on every push and pull request
+- ✅ Caches Go modules for faster builds
+- ✅ Generates coverage reports
+- ✅ Uploads coverage to Codecov
+- ✅ Stores HTML coverage report as artifact
+
+---
+
+### GitLab CI/CD
+
+Add to `.gitlab-ci.yml`:
+
+```yaml
+image: golang:1.23
+
+stages:
+  - test
+  - coverage
+
+variables:
+  GO_VERSION: "1.23"
+
+before_script:
+  - cd src
+  - go mod download
+
+unit-tests:
+  stage: test
+  script:
+    - go test -v -coverprofile=coverage.out
+    - go tool cover -func=coverage.out
+  coverage: '/total:.*\s(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: src/coverage.out
+    paths:
+      - src/coverage.out
+    expire_in: 1 week
+
+coverage-report:
+  stage: coverage
+  dependencies:
+    - unit-tests
+  script:
+    - cd src
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    paths:
+      - src/coverage.html
+    expire_in: 1 month
+  only:
+    - main
+    - develop
+```
+
+**Features:**
+- ✅ Runs on every commit
+- ✅ Extracts coverage percentage for GitLab UI
+- ✅ Generates Cobertura coverage report
+- ✅ Stores coverage artifacts
+- ✅ Separate coverage HTML generation for main branches
+
+---
+
+### Azure DevOps
+
+Add to `azure-pipelines.yml`:
+
+```yaml
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  GOVERSION: '1.23'
+  GOPATH: '$(Agent.WorkFolder)/go'
+  GOBIN: '$(GOPATH)/bin'
+
+steps:
+  - task: GoTool@0
+    displayName: 'Install Go $(GOVERSION)'
+    inputs:
+      version: '$(GOVERSION)'
+
+  - script: |
+      cd src
+      go mod download
+    displayName: 'Download Go dependencies'
+
+  - script: |
+      cd src
+      go test -v -coverprofile=coverage.out
+    displayName: 'Run unit tests'
+
+  - script: |
+      cd src
+      go tool cover -func=coverage.out
+      go tool cover -html=coverage.out -o coverage.html
+    displayName: 'Generate coverage report'
+
+  - task: PublishCodeCoverageResults@2
+    inputs:
+      codeCoverageTool: 'Cobertura'
+      summaryFileLocation: 'src/coverage.out'
+    displayName: 'Publish coverage results'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      PathtoPublish: 'src/coverage.html'
+      ArtifactName: 'coverage-report'
+    displayName: 'Publish coverage HTML'
+```
+
+---
+
+### Jenkins
+
+Add to `Jenkinsfile`:
+
+```groovy
+pipeline {
+    agent any
+
+    tools {
+        go 'go-1.23'
+    }
+
+    environment {
+        GO111MODULE = 'on'
+        GOPATH = "${WORKSPACE}/go"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Dependencies') {
+            steps {
+                dir('src') {
+                    sh 'go mod download'
+                }
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                dir('src') {
+                    sh 'go test -v -coverprofile=coverage.out'
+                }
+            }
+        }
+
+        stage('Coverage Report') {
+            steps {
+                dir('src') {
+                    sh 'go tool cover -func=coverage.out'
+                    sh 'go tool cover -html=coverage.out -o coverage.html'
+                }
+            }
+        }
+
+        stage('Publish Results') {
+            steps {
+                publishHTML([
+                    reportDir: 'src',
+                    reportFiles: 'coverage.html',
+                    reportName: 'Coverage Report'
+                ])
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
+```
+
+---
+
+### Local CI Simulation
+
+Test your CI/CD configuration locally before pushing:
+
+#### Using Act (GitHub Actions locally)
+
+```bash
+# Install act
+brew install act  # macOS
+# or
+curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+
+# Run GitHub Actions locally
+act -j test
+```
+
+#### Using Docker
+
+```bash
+# Create a test container
+docker run --rm -v $(pwd):/workspace -w /workspace/src golang:1.23 bash -c "
+  go mod download &&
+  go test -v -coverprofile=coverage.out &&
+  go tool cover -func=coverage.out
+"
+```
+
+---
+
+### Coverage Thresholds
+
+Enforce minimum coverage requirements in CI/CD:
+
+#### GitHub Actions
+
+```yaml
+- name: Check coverage threshold
+  run: |
+    cd src
+    coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+    threshold=24.0
+    if (( $(echo "$coverage < $threshold" | bc -l) )); then
+      echo "Coverage $coverage% is below threshold $threshold%"
+      exit 1
+    fi
+    echo "Coverage $coverage% meets threshold $threshold%"
+```
+
+#### GitLab CI
+
+```yaml
+coverage-check:
+  stage: test
+  script:
+    - cd src
+    - go test -coverprofile=coverage.out
+    - |
+      coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+      if [ $(echo "$coverage < 24.0" | bc) -eq 1 ]; then
+        echo "Coverage $coverage% is below threshold 24.0%"
+        exit 1
+      fi
+```
+
+---
+
+### Pre-commit Hooks
+
+Run tests automatically before every commit:
+
+Create `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+# Pre-commit hook to run unit tests
+
+echo "Running unit tests..."
+cd src
+go test -v
+
+if [ $? -ne 0 ]; then
+    echo "❌ Unit tests failed. Commit aborted."
+    exit 1
+fi
+
+echo "✅ All unit tests passed!"
+exit 0
+```
+
+Make it executable:
+```bash
+chmod +x .git/hooks/pre-commit
+```
+
+---
+
 ## Version History
+
+**v1.22.3** (2026-01-08)
+- Added comprehensive Troubleshooting section (7 common issues)
+- Added CI/CD Integration section with ready-to-use examples
+- Documented GitHub Actions, GitLab CI, Azure DevOps, and Jenkins configurations
+- Added coverage threshold enforcement examples
+- Added pre-commit hook template
+- Added local CI simulation examples (Act and Docker)
 
 **v1.16.11** (2026-01-05)
 - Added 7 new unit tests (medium and low priority)
@@ -594,9 +1192,10 @@ Tests run automatically on:
 
 ---
 
-**Last Updated:** 2026-01-05
+**Last Updated:** 2026-01-08
 **Total Tests:** 46
 **Overall Coverage:** 24.6%
+**Documentation Sections:** 18 (including Troubleshooting and CI/CD Integration)
 
                           ..ooOO END OOoo..
 
