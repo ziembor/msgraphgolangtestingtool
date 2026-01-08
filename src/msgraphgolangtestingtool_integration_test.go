@@ -188,6 +188,136 @@ func TestIntegration_CreateCalendarEvent(t *testing.T) {
 	t.Log("  Check your calendar to verify the event")
 }
 
+// TestIntegration_ExportInbox tests exporting inbox messages to JSON files
+func TestIntegration_ExportInbox(t *testing.T) {
+	config := loadTestConfig(t)
+	ctx := context.Background()
+
+	client, err := setupGraphClient(ctx, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to create Graph client: %v", err)
+	}
+
+	// Export 3 messages
+	exportCount := 3
+	t.Logf("Exporting %d inbox messages from %s to JSON files", exportCount, config.Mailbox)
+
+	err = exportInbox(ctx, client, config.Mailbox, exportCount, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to export inbox: %v", err)
+	}
+
+	t.Log("✅ Successfully exported inbox messages to JSON")
+	t.Logf("  Check %%TEMP%%\\export\\%s for exported files", time.Now().Format("2006-01-02"))
+}
+
+// TestIntegration_SearchAndExport tests searching for and exporting a specific message by Message-ID
+func TestIntegration_SearchAndExport(t *testing.T) {
+	config := loadTestConfig(t)
+	ctx := context.Background()
+
+	client, err := setupGraphClient(ctx, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to create Graph client: %v", err)
+	}
+
+	// First, get an inbox message to obtain a valid Message-ID
+	t.Log("Step 1: Retrieving inbox to get a valid Message-ID...")
+
+	// We'll use the Graph API directly to get a message with its internetMessageId
+	messages, err := client.Users().ByUserId(config.Mailbox).Messages().Get(ctx, nil)
+	if err != nil {
+		t.Fatalf("Failed to retrieve messages: %v", err)
+	}
+
+	messageList := messages.GetValue()
+	if len(messageList) == 0 {
+		t.Skip("No messages in inbox - cannot test searchandexport")
+	}
+
+	// Get the first message's Internet Message ID
+	firstMessage := messageList[0]
+	internetMessageId := firstMessage.GetInternetMessageId()
+
+	if internetMessageId == nil || *internetMessageId == "" {
+		t.Skip("First message has no Internet Message ID - cannot test searchandexport")
+	}
+
+	messageID := *internetMessageId
+	t.Logf("  Found message with ID: %s", messageID)
+
+	// Now test searchAndExport with this valid Message-ID
+	t.Log("Step 2: Searching for and exporting message by Message-ID...")
+
+	err = searchAndExport(ctx, client, config.Mailbox, messageID, config, nil)
+	if err != nil {
+		t.Fatalf("Failed to search and export message: %v", err)
+	}
+
+	t.Log("✅ Successfully searched and exported message by Message-ID")
+	t.Logf("  Check %%TEMP%%\\export\\%s for exported file", time.Now().Format("2006-01-02"))
+}
+
+// TestIntegration_SearchAndExport_InvalidMessageID tests that invalid Message-IDs are properly rejected
+func TestIntegration_SearchAndExport_InvalidMessageID(t *testing.T) {
+	config := loadTestConfig(t)
+
+	// Test various invalid Message-ID formats
+	invalidMessageIDs := []struct {
+		name      string
+		messageID string
+		shouldFailValidation bool
+	}{
+		{
+			name:      "OData injection attempt with or operator",
+			messageID: "' or 1 eq 1 or internetMessageId eq '",
+			shouldFailValidation: true,
+		},
+		{
+			name:      "OData injection attempt with and operator",
+			messageID: "' and from/emailAddress/address eq 'attacker@evil.com",
+			shouldFailValidation: true,
+		},
+		{
+			name:      "Missing angle brackets",
+			messageID: "test@example.com",
+			shouldFailValidation: true,
+		},
+		{
+			name:      "Contains single quote",
+			messageID: "<test'quote@example.com>",
+			shouldFailValidation: true,
+		},
+		{
+			name:      "Empty Message-ID",
+			messageID: "",
+			shouldFailValidation: true,
+		},
+	}
+
+	for _, tt := range invalidMessageIDs {
+		t.Run(tt.name, func(t *testing.T) {
+			testConfig := *config
+			testConfig.Action = ActionSearchAndExport
+			testConfig.MessageID = tt.messageID
+
+			err := validateConfiguration(&testConfig)
+
+			if tt.shouldFailValidation {
+				if err == nil {
+					t.Errorf("Expected validation to fail for Message-ID %q, but it passed", tt.messageID)
+				} else {
+					t.Logf("✅ Correctly rejected invalid Message-ID: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected validation to pass for Message-ID %q, but got error: %v", tt.messageID, err)
+				}
+			}
+		})
+	}
+}
+
 // TestIntegration_ValidateConfiguration tests the configuration validation logic
 func TestIntegration_ValidateConfiguration(t *testing.T) {
 	tests := []struct {

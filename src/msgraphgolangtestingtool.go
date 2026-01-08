@@ -28,13 +28,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 )
-
-//go:embed VERSION
-var versionRaw string
-var version = strings.TrimSpace(versionRaw)
 
 func main() {
 	// Handle -completion flag FIRST, before anything else runs

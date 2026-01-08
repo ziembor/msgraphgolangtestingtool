@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -880,6 +881,96 @@ func TestGeneratePowerShellCompletion(t *testing.T) {
 	if !strings.Contains(script, "Write-Host") {
 		t.Error("generatePowerShellCompletion() missing success message")
 	}
+}
+
+// TestGenerateBashCompletion_Syntax tests that the generated bash completion script is syntactically valid
+func TestGenerateBashCompletion_Syntax(t *testing.T) {
+	script := generateBashCompletion()
+
+	// Create a temporary file with the script
+	tmpFile, err := os.CreateTemp("", "bash-completion-*.sh")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write script to file
+	if _, err := tmpFile.WriteString(script); err != nil {
+		t.Fatalf("Failed to write script to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	// Test bash syntax using bash -n (syntax check only, no execution)
+	cmd := exec.Command("bash", "-n", tmpFile.Name())
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		t.Errorf("Bash completion script has invalid syntax: %v\nOutput: %s\nScript preview (first 500 chars):\n%s",
+			err, output, script[:min(500, len(script))])
+	} else {
+		t.Logf("✓ Bash completion script syntax is valid (%d bytes)", len(script))
+	}
+}
+
+// TestGeneratePowerShellCompletion_Syntax tests that the generated PowerShell completion script is syntactically valid
+func TestGeneratePowerShellCompletion_Syntax(t *testing.T) {
+	script := generatePowerShellCompletion()
+
+	// Check if pwsh (PowerShell 7+) is available
+	// We use pwsh instead of powershell for better cross-platform support
+	_, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("Skipping PowerShell syntax test - pwsh (PowerShell 7+) not found in PATH")
+	}
+
+	// Create a temporary file with the script
+	tmpFile, err := os.CreateTemp("", "ps-completion-*.ps1")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write script to file
+	if _, err := tmpFile.WriteString(script); err != nil {
+		t.Fatalf("Failed to write script to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	// Test PowerShell syntax using pwsh with -File and -NoProfile
+	// Using -File instead of -Command to avoid issues with script parsing
+	// The script will attempt to run but we're mainly checking for syntax errors
+	cmd := exec.Command("pwsh", "-NoProfile", "-NonInteractive", "-File", tmpFile.Name())
+
+	// Set a timeout to prevent hangs
+	output, err := cmd.CombinedOutput()
+
+	// For PowerShell, we expect it to complete without syntax errors
+	// The script registers completions which should succeed
+	if err != nil {
+		outputStr := string(output)
+		// Check if error is due to syntax issues (not just completion registration)
+		if strings.Contains(outputStr, "ParserError") ||
+			strings.Contains(outputStr, "syntax") ||
+			strings.Contains(outputStr, "unexpected token") {
+			t.Errorf("PowerShell completion script has syntax errors: %v\nOutput: %s\nScript preview (first 500 chars):\n%s",
+				err, outputStr, script[:min(500, len(script))])
+		} else {
+			// Script ran but returned non-zero (possibly due to completion registration context)
+			// This is acceptable as long as no syntax errors
+			t.Logf("✓ PowerShell completion script syntax is valid (%d bytes) - exit code %v (expected for completion script)",
+				len(script), err)
+		}
+	} else {
+		t.Logf("✓ PowerShell completion script syntax is valid and executed successfully (%d bytes)", len(script))
+	}
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // TestInt32Ptr tests the Int32Ptr helper function

@@ -2,7 +2,7 @@
 
 ## File Structure and Dependencies
 
-```
+```bash
 msgraphgolangtestingtool/
 ├── src/
 │   ├── msgraphgolangtestingtool.go  (Main CLI entry point)
@@ -19,7 +19,7 @@ msgraphgolangtestingtool/
 
 ## Main Application Flow
 
-```
+```bash
 ┌─────────────────────────────────────────────────────────────────┐
 │                    msgraphgolangtestingtool.go                   │
 │                        (Main Entry Point)                        │
@@ -49,7 +49,7 @@ msgraphgolangtestingtool/
 
 ### Authentication & Client Setup
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Authentication Layer                         │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -76,7 +76,7 @@ msgraphgolangtestingtool/
 
 ### Core Graph API Operations
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Microsoft Graph API Layer                    │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -113,7 +113,7 @@ msgraphgolangtestingtool/
 
 ### Validation & Helper Functions
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Validation & Utilities                       │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -150,7 +150,7 @@ msgraphgolangtestingtool/
 
 ## Test Suite Architecture
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                        Test Structure                           │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -195,7 +195,7 @@ msgraphgolangtestingtool/
 
 ## Certificate Authentication Flow (Windows)
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │              Windows Certificate Store Integration              │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -218,7 +218,7 @@ msgraphgolangtestingtool/
 
 ## Release Automation (run-integration-tests.ps1)
 
-```
+```bash
 ┌────────────────────────────────────────────────────────────────┐
 │                    Release Script Workflow                      │
 └─────────────────────────┬──────────────────────────────────────┘
@@ -273,7 +273,7 @@ msgraphgolangtestingtool/
 
 ## Data Flow Example: Send Email with Attachments
 
-```
+```bash
 User Command:
   msgraphgolangtestingtool.exe -action sendmail -to "user@example.com"
     -subject "Test" -body "Hello" -attachment "file.pdf"
@@ -314,7 +314,7 @@ User Command:
 
 ## Test Coverage by Function Category
 
-```
+```bash
 ┌──────────────────────────────────────────────────────────────────┐
 │                    Coverage Summary (24.6%)                      │
 ├──────────────────────────────────────────────────────────────────┤
@@ -346,7 +346,9 @@ User Command:
 ## Key Design Patterns
 
 ### 1. Table-Driven Tests
+
 All unit tests use the table-driven pattern for maintainability:
+
 ```go
 tests := []struct {
     name     string
@@ -357,7 +359,9 @@ tests := []struct {
 ```
 
 ### 2. Config Struct Pattern
+
 Centralized configuration simplifies function signatures:
+
 ```go
 type Config struct { /* all configuration */ }
 func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient,
@@ -365,19 +369,24 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient,
 ```
 
 ### 3. Retry with Exponential Backoff
+
 Handles transient failures gracefully:
+
 ```go
 retryWithBackoff(ctx, maxRetries, baseDelay, operation func() error)
 ```
 
 ### 4. Platform-Specific Builds
+
 Build tags enable Windows-specific features while maintaining cross-platform support for **Windows, Linux, and macOS**:
+
 ```go
 // cert_windows.go - //go:build windows (Windows Certificate Store access)
 // cert_stub.go    - //go:build !windows (Linux/macOS stub)
 ```
 
 **GitHub Actions Workflow** builds binaries for all three platforms:
+
 - `msgraphgolangtestingtool-windows.zip` - Windows binary (.exe)
 - `msgraphgolangtestingtool-linux.zip` - Linux binary (ELF)
 - `msgraphgolangtestingtool-macos.zip` - macOS binary (Mach-O)
@@ -385,8 +394,10 @@ Build tags enable Windows-specific features while maintaining cross-platform sup
 **Note:** The `-thumbprint` authentication method (Windows Certificate Store) is only available on Windows. Linux and macOS users should use `-secret` or `-pfx` authentication.
 
 ### 5. CSV Logging Pattern
+
 Action-specific CSV files prevent schema conflicts:
-```
+
+```bash
 _msgraphgolangtestingtool_sendmail_2026-01-05.csv
 _msgraphgolangtestingtool_getevents_2026-01-05.csv
 _msgraphgolangtestingtool_getinbox_2026-01-05.csv
@@ -395,8 +406,10 @@ _msgraphgolangtestingtool_searchandexport_2026-01-07.csv
 ```
 
 ### 6. JSON Export Pattern (v1.21.0+)
+
 Export actions create date-stamped directories with individual JSON files:
-```
+
+```bash
 %TEMP%\export\2026-01-07\
 ├── message_1_2026-01-07T10-30-45.json
 ├── message_2_2026-01-07T10-25-12.json
@@ -412,5 +425,3 @@ Export actions create date-stamped directories with individual JSON files:
 **Test Coverage:** 24.6% (46 passing tests)
 
                           ..ooOO END OOoo..
-
-

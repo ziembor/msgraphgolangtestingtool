@@ -9,6 +9,23 @@
 
 ---
 
+## ⚠️ NOTICE: Recommendations Merged into IMPROVEMENTS.md
+
+**Date:** 2026-01-07
+
+All recommendations from this code review have been merged into **[IMPROVEMENTS.md](./IMPROVEMENTS.md)** as items #10-14. This file is maintained for historical reference, but please refer to IMPROVEMENTS.md for the current status of all recommendations and implementation tracking.
+
+**Merged Items:**
+- #10: Add Bash/PowerShell Syntax Validation Tests (PENDING)
+- #11: Add Large File Attachment Test (✅ COMPLETED in v1.22.1)
+- #12: Extract Security Scanner Patterns to Configuration (PENDING)
+- #13: Add Progress Indicator to Security Scanner (PENDING)
+- #14: Add Documentation Enhancements to UNIT_TESTS.md (PENDING)
+
+**For current status, see:** [IMPROVEMENTS.md - Summary by Priority](./IMPROVEMENTS.md#summary-by-priority)
+
+---
+
 ## Executive Summary
 
 **Overall Assessment:** ✅ **APPROVED with Minor Recommendations**

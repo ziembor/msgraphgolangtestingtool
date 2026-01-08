@@ -8,7 +8,7 @@
 //   Set environment variables:
 //     MSGRAPHTENANTID, MSGRAPHCLIENTID, MSGRAPHSECRET, MSGRAPHMAILBOX
 //   Run:
-//     go run -tags=integration integration_test_tool.go shared.go cert_windows.go
+//     go run -tags=integration .
 //
 // This tool will:
 //   1. Validate credentials from environment variables
