@@ -137,6 +137,16 @@ func run() error {
 	slogger := setupLogger(config)
 	slogger.Info("Application starting", "version", version, "action", config.Action)
 
+	// Load body template if provided (validation already done in step 4)
+	if config.BodyTemplate != "" {
+		content, err := os.ReadFile(config.BodyTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to read body template file: %w", err)
+		}
+		config.BodyHTML = string(content)
+		slogger.Info("Loaded email body from template", "path", config.BodyTemplate, "size", len(config.BodyHTML))
+	}
+
 	// 6. Initialize services (CSV logging and proxy)
 	csvLogger, err := initializeServices(config)
 	if err != nil {
