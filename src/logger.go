@@ -29,8 +29,8 @@ func setupLogger(config *Config) *slog.Logger {
 		Level: level,
 	}
 
-	// Create a text handler that writes to stdout
-	handler := slog.NewTextHandler(os.Stdout, opts)
+	// Create a text handler that writes to stderr
+	handler := slog.NewTextHandler(os.Stderr, opts)
 
 	// Create and return the logger
 	return slog.New(handler)
@@ -86,7 +86,7 @@ func logError(logger *slog.Logger, msg string, args ...any) {
 func logVerbose(verbose bool, format string, args ...interface{}) {
 	if verbose {
 		prefix := "[VERBOSE] "
-		fmt.Printf(prefix+format+"\n", args...)
+		fmt.Fprintf(os.Stderr, prefix+format+"\n", args...)
 	}
 }
 
