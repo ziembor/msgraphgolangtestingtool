@@ -34,9 +34,10 @@ type Config struct {
 	AttachmentFiles stringSlice // File paths to attach to email
 
 	// Email content
-	Subject  string // Email subject line
-	Body     string // Email body text content
-	BodyHTML string // Email body HTML content (future use)
+	Subject      string // Email subject line
+	Body         string // Email body text content
+	BodyHTML     string // Email body HTML content (future use)
+	BodyTemplate string // Path to HTML email body template file
 
 	// Calendar invite configuration
 	InviteSubject string // Subject of calendar meeting invitation
@@ -52,9 +53,10 @@ type Config struct {
 	RetryDelay time.Duration // Base delay between retries in milliseconds (default: 2000ms)
 
 	// Runtime configuration
-	VerboseMode bool   // Enable verbose diagnostic output (maps to DEBUG log level)
-	LogLevel    string // Logging level: DEBUG, INFO, WARN, ERROR (default: INFO)
-	Count       int    // Number of items to retrieve (for getevents and getinbox actions)
+	VerboseMode  bool   // Enable verbose diagnostic output (maps to DEBUG log level)
+	LogLevel     string // Logging level: DEBUG, INFO, WARN, ERROR (default: INFO)
+	OutputFormat string // Output format: text, json (default: text)
+	Count        int    // Number of items to retrieve (for getevents and getinbox actions)
 }
 
 // NewConfig creates a new Config with sensible default values.
@@ -69,6 +71,7 @@ func NewConfig() *Config {
 		Count:         3,
 		VerboseMode:   false,
 		LogLevel:      "INFO",                  // Default: INFO level logging
+		OutputFormat:  "text",                  // Default: text output
 		ShowVersion:   false,
 		MaxRetries:    3,                       // Default: 3 retry attempts
 		RetryDelay:    2000 * time.Millisecond, // Default: 2 second base delay
@@ -116,6 +119,7 @@ func parseAndConfigureFlags() *Config {
 	subject := flag.String("subject", "Automated Tool Notification", "Subject of the email or calendar invite (env: MSGRAPHSUBJECT)")
 	body := flag.String("body", "It's a test message, please ignore", "Body content of the email (text) (env: MSGRAPHBODY)")
 	bodyHTML := flag.String("bodyHTML", "", "HTML body content of the email (optional, creates multipart message if both -body and -bodyHTML are provided) (env: MSGRAPHBODYHTML)")
+	bodyTemplate := flag.String("body-template", "", "Path to HTML email body template file (env: MSGRAPHBODYTEMPLATE)")
 	flag.Var(&attachmentFiles, "attachments", "Comma-separated list of file paths to attach (env: MSGRAPHATTACHMENTS)")
 
 	// Calendar invite flags
@@ -139,6 +143,9 @@ func parseAndConfigureFlags() *Config {
 	// Log level
 	logLevel := flag.String("loglevel", "INFO", "Logging level: DEBUG, INFO, WARN, ERROR (default: INFO)")
 
+	// Output format
+	outputFormat := flag.String("output", "text", "Output format: text, json (default: text) (env: MSGRAPHOUTPUT)")
+
 	// Count for getevents and getinbox
 	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
 
@@ -157,12 +164,14 @@ func parseAndConfigureFlags() *Config {
 		"MSGRAPHSUBJECT":       subject,
 		"MSGRAPHBODY":          body,
 		"MSGRAPHBODYHTML":      bodyHTML,
+		"MSGRAPHBODYTEMPLATE":  bodyTemplate,
 		"MSGRAPHINVITESUBJECT": inviteSubject,
 		"MSGRAPHSTART":         startTime,
 		"MSGRAPHEND":           endTime,
 		"MSGRAPHMESSAGEID":     messageID,
 		"MSGRAPHACTION":        action,
 		"MSGRAPHPROXY":         proxyURL,
+		"MSGRAPHOUTPUT":        outputFormat,
 	})
 
 	// Apply environment variables for stringSlice flags
@@ -247,6 +256,7 @@ func parseAndConfigureFlags() *Config {
 		Subject:         *subject,
 		Body:            *body,
 		BodyHTML:        *bodyHTML,
+		BodyTemplate:    *bodyTemplate,
 		InviteSubject:   *inviteSubject,
 		StartTime:       *startTime,
 		EndTime:         *endTime,
@@ -256,12 +266,13 @@ func parseAndConfigureFlags() *Config {
 		RetryDelay:      time.Duration(*retryDelay) * time.Millisecond,
 		VerboseMode:     *verbose,
 		LogLevel:        *logLevel,
+		OutputFormat:    strings.ToLower(*outputFormat),
 		Count:           *count,
 	}
 
 	// Print verbose configuration if enabled
 	if config.VerboseMode {
-		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID)
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID, config.OutputFormat)
 	}
 
 	return config
@@ -287,11 +298,13 @@ func applyEnvVars(envMap map[string]*string) {
 		"subject":        "MSGRAPHSUBJECT",
 		"body":           "MSGRAPHBODY",
 		"bodyHTML":       "MSGRAPHBODYHTML",
+		"body-template":  "MSGRAPHBODYTEMPLATE",
 		"invite-subject": "MSGRAPHINVITESUBJECT",
 		"start":          "MSGRAPHSTART",
 		"end":            "MSGRAPHEND",
 		"action":         "MSGRAPHACTION",
 		"proxy":          "MSGRAPHPROXY",
+		"output":         "MSGRAPHOUTPUT",
 	}
 
 	// For each environment variable, if flag wasn't provided, use env value
@@ -379,6 +392,13 @@ func validateConfiguration(config *Config) error {
 		}
 	}
 
+	// Validate body template file path
+	if config.BodyTemplate != "" {
+		if err := validateFilePath(config.BodyTemplate, "Body template file"); err != nil {
+			return err
+		}
+	}
+
 	// Validate email lists if provided
 	if len(config.To) > 0 {
 		if err := validateEmails(config.To, "To recipients"); err != nil {
@@ -418,6 +438,11 @@ func validateConfiguration(config *Config) error {
 		return fmt.Errorf("invalid action: %s (use: getevents, sendmail, sendinvite, getinbox, getschedule, exportinbox, searchandexport)", config.Action)
 	}
 
+	// Validate output format
+	if config.OutputFormat != "text" && config.OutputFormat != "json" {
+		return fmt.Errorf("invalid output format: %s (use: text, json)", config.OutputFormat)
+	}
+
 	// Validate getschedule-specific requirements
 	if config.Action == ActionGetSchedule {
 		if len(config.To) == 0 {
@@ -444,7 +469,7 @@ func validateConfiguration(config *Config) error {
 }
 
 // Print verbose configuration summary
-func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID string) {
+func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID, outputFormat string) {
 	fmt.Println("========================================")
 	fmt.Println("VERBOSE MODE ENABLED")
 	fmt.Println("========================================")
@@ -483,6 +508,7 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 	fmt.Printf("Client ID: %s\n", clientID)
 	fmt.Printf("Mailbox: %s\n", mailbox)
 	fmt.Printf("Action: %s\n", action)
+	fmt.Printf("Output Format: %s\n", outputFormat)
 
 	// Authentication method
 	fmt.Println()
@@ -554,6 +580,7 @@ func getEnvVariables() map[string]string {
 		"MSGRAPHSUBJECT",
 		"MSGRAPHBODY",
 		"MSGRAPHBODYHTML",
+		"MSGRAPHBODYTEMPLATE",
 		"MSGRAPHATTACHMENTS",
 		"MSGRAPHINVITESUBJECT",
 		"MSGRAPHSTART",
@@ -565,6 +592,7 @@ func getEnvVariables() map[string]string {
 		"MSGRAPHMAXRETRIES",
 		"MSGRAPHRETRYDELAY",
 		"MSGRAPHLOGLEVEL",
+		"MSGRAPHOUTPUT",
 	}
 
 	for _, envVar := range msgraphEnvVars {

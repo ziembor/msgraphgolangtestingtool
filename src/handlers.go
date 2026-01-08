@@ -102,36 +102,49 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	eventCount := len(events)
 
 	logVerbose(config.VerboseMode, "API response received: %d events", eventCount)
-	fmt.Printf("Upcoming events for %s:\n", mailbox)
 
-	if eventCount == 0 {
-		fmt.Println("No events found.")
-		// Log summary entry when no events found
-		if logger != nil {
-			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, "No events found (0 events)", "N/A"})
-		}
+	if config.OutputFormat == "json" {
+		printJSON(formatEventsOutput(events))
 	} else {
-		for _, event := range events {
-			subject := "N/A"
-			if event.GetSubject() != nil {
-				subject = *event.GetSubject()
+		fmt.Printf("Upcoming events for %s:\n", mailbox)
+
+		if eventCount == 0 {
+			fmt.Println("No events found.")
+		} else {
+			for _, event := range events {
+				subject := "N/A"
+				if event.GetSubject() != nil {
+					subject = *event.GetSubject()
+				}
+
+				id := "N/A"
+				if event.GetId() != nil {
+					id = *event.GetId()
+				}
+
+				fmt.Printf("- %s (ID: %s)\n", subject, id)
 			}
+			// Log summary entry after all events
+			fmt.Printf("\nTotal events retrieved: %d\n", eventCount)
+		}
+	}
 
-			id := "N/A"
-			if event.GetId() != nil {
-				id = *event.GetId()
-			}
-
-			fmt.Printf("- %s (ID: %s)\n", subject, id)
-
-			// Write to CSV
-			if logger != nil {
+	// Always write to CSV logger regardless of output format
+	if logger != nil {
+		if eventCount == 0 {
+			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, "No events found (0 events)", "N/A"})
+		} else {
+			for _, event := range events {
+				subject := "N/A"
+				if event.GetSubject() != nil {
+					subject = *event.GetSubject()
+				}
+				id := "N/A"
+				if event.GetId() != nil {
+					id = *event.GetId()
+				}
 				logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
 			}
-		}
-		// Log summary entry after all events
-		fmt.Printf("\nTotal events retrieved: %d\n", eventCount)
-		if logger != nil {
 			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
 		}
 	}
@@ -333,61 +346,91 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	messageCount := len(messages)
 
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)
-	fmt.Printf("Newest %d messages in inbox for %s:\n\n", count, mailbox)
 
-	if messageCount == 0 {
-		fmt.Println("No messages found.")
-		// Log summary entry when no messages found
-		if logger != nil {
-			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
-		}
+	if config.OutputFormat == "json" {
+		printJSON(formatMessagesOutput(messages))
 	} else {
-		for i, message := range messages {
-			// Extract sender
-			sender := "N/A"
-			if message.GetFrom() != nil && message.GetFrom().GetEmailAddress() != nil {
-				if message.GetFrom().GetEmailAddress().GetAddress() != nil {
-					sender = *message.GetFrom().GetEmailAddress().GetAddress()
+		fmt.Printf("Newest %d messages in inbox for %s:\n\n", count, mailbox)
+
+		if messageCount == 0 {
+			fmt.Println("No messages found.")
+		} else {
+			for i, message := range messages {
+				// Extract sender
+				sender := "N/A"
+				if message.GetFrom() != nil && message.GetFrom().GetEmailAddress() != nil {
+					if message.GetFrom().GetEmailAddress().GetAddress() != nil {
+						sender = *message.GetFrom().GetEmailAddress().GetAddress()
+					}
 				}
-			}
 
-			// Extract recipients
-			recipients := []string{}
-			for _, recipient := range message.GetToRecipients() {
-				if recipient.GetEmailAddress() != nil && recipient.GetEmailAddress().GetAddress() != nil {
-					recipients = append(recipients, *recipient.GetEmailAddress().GetAddress())
+				// Extract recipients
+				recipients := []string{}
+				for _, recipient := range message.GetToRecipients() {
+					if recipient.GetEmailAddress() != nil && recipient.GetEmailAddress().GetAddress() != nil {
+						recipients = append(recipients, *recipient.GetEmailAddress().GetAddress())
+					}
 				}
-			}
-			recipientStr := "N/A"
-			if len(recipients) > 0 {
-				recipientStr = strings.Join(recipients, "; ")
-			}
+				recipientStr := "N/A"
+				if len(recipients) > 0 {
+					recipientStr = strings.Join(recipients, "; ")
+				}
 
-			// Extract subject
-			subject := "N/A"
-			if message.GetSubject() != nil {
-				subject = *message.GetSubject()
+				// Extract subject
+				subject := "N/A"
+				if message.GetSubject() != nil {
+					subject = *message.GetSubject()
+				}
+
+				// Extract received date
+				receivedDate := "N/A"
+				if message.GetReceivedDateTime() != nil {
+					receivedDate = message.GetReceivedDateTime().Format("2006-01-02 15:04:05")
+				}
+
+				fmt.Printf("%d. Subject: %s\n", i+1, subject)
+				fmt.Printf("   From: %s\n", sender)
+				fmt.Printf("   To: %s\n", recipientStr)
+				fmt.Printf("   Received: %s\n\n", receivedDate)
 			}
+			// Log summary entry after all messages
+			fmt.Printf("Total messages retrieved: %d\n", messageCount)
+		}
+	}
 
-			// Extract received date
-			receivedDate := "N/A"
-			if message.GetReceivedDateTime() != nil {
-				receivedDate = message.GetReceivedDateTime().Format("2006-01-02 15:04:05")
-			}
+	// Always write to CSV logger
+	if logger != nil {
+		if messageCount == 0 {
+			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
+		} else {
+			for _, message := range messages {
+				sender := "N/A"
+				if message.GetFrom() != nil && message.GetFrom().GetEmailAddress() != nil {
+					if message.GetFrom().GetEmailAddress().GetAddress() != nil {
+						sender = *message.GetFrom().GetEmailAddress().GetAddress()
+					}
+				}
+				recipients := []string{}
+				for _, recipient := range message.GetToRecipients() {
+					if recipient.GetEmailAddress() != nil && recipient.GetEmailAddress().GetAddress() != nil {
+						recipients = append(recipients, *recipient.GetEmailAddress().GetAddress())
+					}
+				}
+				recipientStr := "N/A"
+				if len(recipients) > 0 {
+					recipientStr = strings.Join(recipients, "; ")
+				}
+				subject := "N/A"
+				if message.GetSubject() != nil {
+					subject = *message.GetSubject()
+				}
+				receivedDate := "N/A"
+				if message.GetReceivedDateTime() != nil {
+					receivedDate = message.GetReceivedDateTime().Format("2006-01-02 15:04:05")
+				}
 
-			fmt.Printf("%d. Subject: %s\n", i+1, subject)
-			fmt.Printf("   From: %s\n", sender)
-			fmt.Printf("   To: %s\n", recipientStr)
-			fmt.Printf("   Received: %s\n\n", receivedDate)
-
-			// Write to CSV
-			if logger != nil {
 				logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
 			}
-		}
-		// Log summary entry after all messages
-		fmt.Printf("Total messages retrieved: %d\n", messageCount)
-		if logger != nil {
 			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
 		}
 	}
@@ -485,15 +528,19 @@ func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClien
 	// Interpret availability
 	status := interpretAvailability(availabilityView)
 
-	// Display results
-	fmt.Printf("Availability Check Results:\n")
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Printf("Organizer:     %s\n", mailbox)
-	fmt.Printf("Recipient:     %s\n", recipient)
-	fmt.Printf("Check Date:    %s\n", checkDateTime.Format("2006-01-02"))
-	fmt.Printf("Check Time:    12:00-13:00 UTC\n")
-	fmt.Printf("Status:        %s\n", status)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	if config.OutputFormat == "json" {
+		printJSON(formatScheduleOutput(scheduleInfo))
+	} else {
+		// Display results
+		fmt.Printf("Availability Check Results:\n")
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+		fmt.Printf("Organizer:     %s\n", mailbox)
+		fmt.Printf("Recipient:     %s\n", recipient)
+		fmt.Printf("Check Date:    %s\n", checkDateTime.Format("2006-01-02"))
+		fmt.Printf("Check Time:    12:00-13:00 UTC\n")
+		fmt.Printf("Status:        %s\n", status)
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	}
 
 	logVerbose(config.VerboseMode, "Availability view: %s → %s", availabilityView, status)
 
@@ -539,14 +586,26 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 	messageCount := len(messages)
 
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)
-	fmt.Printf("Exporting %d messages from inbox for %s...\n", messageCount, mailbox)
+	
+	if config.OutputFormat != "json" {
+		fmt.Printf("Exporting %d messages from inbox for %s...\n", messageCount, mailbox)
+	}
 
 	if messageCount == 0 {
-		fmt.Println("No messages found.")
+		if config.OutputFormat == "json" {
+			printJSON([]interface{}{})
+		} else {
+			fmt.Println("No messages found.")
+		}
 		if logger != nil {
 			logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A"})
 		}
 		return nil
+	}
+
+	// Print JSON output if requested
+	if config.OutputFormat == "json" {
+		printJSON(formatMessagesOutput(messages))
 	}
 
 	// Create export directory
@@ -554,7 +613,10 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Export directory: %s\n", exportDir)
+	
+	if config.OutputFormat != "json" {
+		fmt.Printf("Export directory: %s\n", exportDir)
+	}
 
 	successCount := 0
 	for _, message := range messages {
@@ -565,7 +627,9 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 		successCount++
 	}
 
-	fmt.Printf("Successfully exported %d/%d messages.\n", successCount, messageCount)
+	if config.OutputFormat != "json" {
+		fmt.Printf("Successfully exported %d/%d messages.\n", successCount, messageCount)
+	}
 	if logger != nil {
 		logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, fmt.Sprintf("Exported %d/%d messages", successCount, messageCount), exportDir})
 	}
@@ -611,11 +675,20 @@ func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient,
 	logVerbose(config.VerboseMode, "API response received: %d messages", messageCount)
 
 	if messageCount == 0 {
-		fmt.Printf("No message found with Internet Message ID: %s\n", messageID)
+		if config.OutputFormat == "json" {
+			printJSON([]interface{}{}) // Empty array
+		} else {
+			fmt.Printf("No message found with Internet Message ID: %s\n", messageID)
+		}
 		if logger != nil {
 			logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Message not found", messageID})
 		}
 		return nil
+	}
+
+	// Print JSON output if requested
+	if config.OutputFormat == "json" {
+		printJSON(formatMessagesOutput(messages))
 	}
 
 	// Create export directory
@@ -623,14 +696,19 @@ func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient,
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Export directory: %s\n", exportDir)
+	
+	if config.OutputFormat != "json" {
+		fmt.Printf("Export directory: %s\n", exportDir)
+	}
 
 	// Export found messages (usually 1, but duplicates technically possible in some scenarios)
 	for _, message := range messages {
 		if err := exportMessageToJSON(message, exportDir, config); err != nil {
 			return fmt.Errorf("failed to export message: %w", err)
 		}
-		fmt.Printf("Successfully exported message: %s\n", *message.GetSubject())
+		if config.OutputFormat != "json" {
+			fmt.Printf("Successfully exported message: %s\n", *message.GetSubject())
+		}
 		if logger != nil {
 			logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Exported successfully", *message.GetId()})
 		}
@@ -879,3 +957,93 @@ const (
 	StatusSuccess = "Success"
 	StatusError   = "Error"
 )
+
+// Output helper functions
+
+// printJSON marshals the data to JSON and prints it to stdout
+func printJSON(data interface{}) {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding JSON output: %v\n", err)
+	}
+}
+
+// formatEventsOutput converts a list of Eventable items to a JSON-friendly slice of maps
+func formatEventsOutput(events []models.Eventable) []map[string]interface{} {
+	var output []map[string]interface{}
+	for _, event := range events {
+		eventMap := make(map[string]interface{})
+		if event.GetId() != nil {
+			eventMap["id"] = *event.GetId()
+		}
+		if event.GetSubject() != nil {
+			eventMap["subject"] = *event.GetSubject()
+		}
+		if event.GetStart() != nil && event.GetStart().GetDateTime() != nil {
+			eventMap["start"] = *event.GetStart().GetDateTime()
+		}
+		if event.GetEnd() != nil && event.GetEnd().GetDateTime() != nil {
+			eventMap["end"] = *event.GetEnd().GetDateTime()
+		}
+		if event.GetOrganizer() != nil && event.GetOrganizer().GetEmailAddress() != nil {
+			eventMap["organizer"] = extractEmailAddress(event.GetOrganizer().GetEmailAddress())
+		}
+		output = append(output, eventMap)
+	}
+	return output
+}
+
+// formatMessagesOutput converts a list of Messageable items to a JSON-friendly slice of maps
+func formatMessagesOutput(messages []models.Messageable) []map[string]interface{} {
+	var output []map[string]interface{}
+	for _, message := range messages {
+		msgMap := make(map[string]interface{})
+		if message.GetId() != nil {
+			msgMap["id"] = *message.GetId()
+		}
+		if message.GetSubject() != nil {
+			msgMap["subject"] = *message.GetSubject()
+		}
+		if message.GetReceivedDateTime() != nil {
+			msgMap["receivedDateTime"] = message.GetReceivedDateTime().Format(time.RFC3339)
+		}
+		if message.GetFrom() != nil && message.GetFrom().GetEmailAddress() != nil {
+			msgMap["from"] = extractEmailAddress(message.GetFrom().GetEmailAddress())
+		}
+		if message.GetToRecipients() != nil {
+			msgMap["toRecipients"] = extractRecipients(message.GetToRecipients())
+		}
+		output = append(output, msgMap)
+	}
+	return output
+}
+
+// formatScheduleOutput converts a list of ScheduleInformationable items to a JSON-friendly structure
+func formatScheduleOutput(schedules []models.ScheduleInformationable) []map[string]interface{} {
+	var output []map[string]interface{}
+	for _, schedule := range schedules {
+		schMap := make(map[string]interface{})
+		if schedule.GetScheduleId() != nil {
+			schMap["scheduleId"] = *schedule.GetScheduleId()
+		}
+		if schedule.GetAvailabilityView() != nil {
+			schMap["availabilityView"] = *schedule.GetAvailabilityView()
+			schMap["availabilityStatus"] = interpretAvailability(*schedule.GetAvailabilityView())
+		}
+		// Include working hours if available
+		if schedule.GetWorkingHours() != nil {
+			wh := schedule.GetWorkingHours()
+			whMap := make(map[string]interface{})
+			if wh.GetStartTime() != nil {
+				whMap["startTime"] = *wh.GetStartTime()
+			}
+			if wh.GetEndTime() != nil {
+				whMap["endTime"] = *wh.GetEndTime()
+			}
+			schMap["workingHours"] = whMap
+		}
+		output = append(output, schMap)
+	}
+	return output
+}
