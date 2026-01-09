@@ -67,9 +67,13 @@ The project follows Semantic Versioning (x.y.z):
 - **Patch (z):** Bug fixes, documentation updates
 
 **Version Management:**
-- Current version is stored in `src/VERSION`
-- The version is automatically embedded into the Go binary at compile time using `//go:embed VERSION`
-- **Only update `src/VERSION`**
+- Current version is defined in `internal/common/version/version.go` as a static constant
+- Single source of truth: Update the `Version` const in version.go
+- No external VERSION files needed
+- To update version:
+  1. Change the `Version` const in `internal/common/version/version.go`
+  2. Create changelog entry in `ChangeLog/{version}.md`
+  3. Commit with message: "Bump version to {version}"
 - **Refer to `RELEASE.md` for the full policy.**
 
 ## Prerequisites
@@ -117,15 +121,13 @@ msgraphgolangtestingtool/
 │   ├── common/                   # Shared packages (70-80% code reuse)
 │   │   ├── logger/               # CSV and structured logging
 │   │   ├── retry/                # Retry with exponential backoff
-│   │   ├── version/              # Version embedding
+│   │   ├── version/              # Version management (single source of truth)
 │   │   └── validation/           # Input validators
 │   ├── msgraph/                  # Graph-specific code
 │   └── smtp/                     # SMTP-specific code
 │       ├── protocol/             # SMTP command builders and response parsing
 │       ├── tls/                  # TLS handshake and certificate analysis
 │       └── exchange/             # Exchange detection
-├── src/
-│   └── VERSION                   # Version file (embedded at compile time)
 ├── build-all.ps1                 # Build script for both tools
 ├── run-integration-tests.ps1     # Release automation script
 ├── selfsignedcert.ps1            # Certificate generation script
@@ -138,7 +140,7 @@ msgraphgolangtestingtool/
 
 **Key Points:**
 - Root `go.mod` and `go.sum` in project root
-- VERSION file remains in `src/` for backward compatibility
+- Version managed in `internal/common/version/version.go` (static const)
 - Build both tools: `.\build-all.ps1`
 - Build individually: `go build -C cmd/msgraphtool` or `go build -C cmd/smtptool`
 

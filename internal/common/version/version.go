@@ -1,23 +1,17 @@
 package version
 
-import (
-	_ "embed"
-	"strings"
-)
-
-// Version information embedded from VERSION file
-// This package provides centralized version management for all tools in the repository.
-// The VERSION file is located at the module root and is embedded at compile time.
-
-//go:embed VERSION
-var versionRaw string
-
-// Version is the current version of the tool suite, trimmed of whitespace.
+// Version is the current version of the tool suite.
+// This is the single source of truth for versioning across all tools.
 // All tools (msgraphtool, smtptool) share the same version number.
-var Version = strings.TrimSpace(versionRaw)
+//
+// To update the version:
+// 1. Change the Version constant below
+// 2. Create a changelog entry in ChangeLog/{version}.md
+// 3. Commit with message: "Bump version to {version}"
+const Version = "2.0.2"
 
 // Get returns the current version string.
-// This is a convenience function for accessing the Version variable.
+// This is a convenience function for accessing the Version constant.
 func Get() string {
 	return Version
 }

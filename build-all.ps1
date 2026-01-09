@@ -23,13 +23,19 @@ Write-ColorOutput "`n═══════════════════�
 Write-ColorOutput "  Microsoft Graph & SMTP Tools - Build Script" "Cyan"
 Write-ColorOutput "═══════════════════════════════════════════════════════════`n" "Cyan"
 
-# Read version
-$versionFile = Join-Path $PSScriptRoot "src" "VERSION"
+# Read version from version.go
+$versionFile = Join-Path $PSScriptRoot "internal" "common" "version" "version.go"
 if (-not (Test-Path $versionFile)) {
-    Write-ColorOutput "ERROR: VERSION file not found at $versionFile" "Red"
+    Write-ColorOutput "ERROR: version.go not found at $versionFile" "Red"
     exit 1
 }
-$version = Get-Content $versionFile -Raw | ForEach-Object { $_.Trim() }
+$versionContent = Get-Content $versionFile -Raw
+if ($versionContent -match 'const Version = "([^"]+)"') {
+    $version = $matches[1]
+} else {
+    Write-ColorOutput "ERROR: Could not extract version from version.go" "Red"
+    exit 1
+}
 Write-ColorOutput "Version: $version`n" "Yellow"
 
 # Build Microsoft Graph Tool

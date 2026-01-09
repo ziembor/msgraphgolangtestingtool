@@ -6,10 +6,10 @@ This document is the **definitive guide** for versioning and releasing the `msgr
 
 ### Single Source of Truth
 The version is stored in **one place only**:
-- File: `src/VERSION`
-- Format: Plain text string (e.g., `1.16.2`)
+- File: `internal/common/version/version.go`
+- Format: Go const string (e.g., `const Version = "2.0.2"`)
 
-The Go source code automatically reads this file at compile time using the `//go:embed` directive. You **do not** need to update any Go source files manually.
+To update the version, edit the `Version` constant in `internal/common/version/version.go`. No external VERSION files are needed.
 
 ### Version Numbering
 - **Format:** `x.y.z` (Semantic Versioning)
@@ -34,19 +34,21 @@ The `run-integration-tests.ps1` script is the standard way to perform releases. 
 
 ### What the Script Does
 1. **Safety Checks:** Validates git status and scans for potential secrets.
-2. **Version Bump:** Prompts for new version and updates `src/VERSION`.
+2. **Version Bump:** Prompts for new version and updates `internal/common/version/version.go`.
 3. **Changelog:** Interactively creates `Changelog/{version}.md`.
 4. **Commit:** Stages and commits changes with a standardized message.
-5. **Tag & Push:** Creates a git tag (e.g., `v1.16.2`) and pushes it to trigger GitHub Actions.
+5. **Tag & Push:** Creates a git tag (e.g., `v2.0.2`) and pushes it to trigger GitHub Actions.
 
 ## 3. Manual Release Process
 
 If you cannot use the automation script, follow these steps to release manually.
 
 ### Step 1: Update Version
-Update the version file with the new number (e.g., `2.1.0`).
-```powershell
-echo "2.1.0" | Out-File -NoNewline -Encoding utf8 src/VERSION
+Update the version constant with the new number (e.g., `2.1.0`).
+
+Edit `internal/common/version/version.go`:
+```go
+const Version = "2.1.0"  // Change this line
 ```
 
 ### Step 2: Create Changelog
@@ -72,7 +74,7 @@ Create a new file `Changelog/2.1.0.md`:
 
 ### Step 4: Commit Changes
 ```powershell
-git add src/VERSION Changelog/2.1.0.md
+git add internal/common/version/version.go Changelog/2.1.0.md
 git commit -m "Release v2.1.0"
 git push origin main
 ```
@@ -128,8 +130,8 @@ If a bad release is pushed:
 To perform a release:
 1. **Prefer `.\run-integration-tests.ps1`** if interactive mode is possible.
 2. **If manual:**
-   - Read `src/VERSION`.
+   - Read `internal/common/version/version.go` to get current version.
    - Increment according to Semantic Versioning (major.minor.patch).
-   - Update `src/VERSION`.
+   - Update the `Version` const in `internal/common/version/version.go`.
    - Write `Changelog/{version}.md`.
    - Commit & Tag.
