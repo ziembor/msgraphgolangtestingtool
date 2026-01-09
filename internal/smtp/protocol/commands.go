@@ -1,21 +1,37 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SMTP command builders following RFC 5321
 // All commands include proper CRLF line endings as required by the SMTP protocol.
+//
+// Defense-in-Depth: All command builders sanitize input parameters to remove
+// CRLF sequences that could be used for command injection attacks. While this
+// tool accepts input from trusted sources (CLI flags), this sanitization provides
+// an additional layer of protection.
+
+// sanitizeCRLF removes carriage return and line feed characters from input strings
+// to prevent SMTP command injection attacks. This is a defense-in-depth measure.
+func sanitizeCRLF(input string) string {
+	input = strings.ReplaceAll(input, "\r", "")
+	input = strings.ReplaceAll(input, "\n", "")
+	return input
+}
 
 // EHLO sends an Extended SMTP greeting with the specified hostname.
 // This command initiates an SMTP session and requests the server's capabilities.
 // Example: EHLO smtptool.local
 func EHLO(hostname string) string {
-	return fmt.Sprintf("EHLO %s\r\n", hostname)
+	return fmt.Sprintf("EHLO %s\r\n", sanitizeCRLF(hostname))
 }
 
 // HELO sends a standard SMTP greeting (legacy, use EHLO if possible).
 // Example: HELO smtptool.local
 func HELO(hostname string) string {
-	return fmt.Sprintf("HELO %s\r\n", hostname)
+	return fmt.Sprintf("HELO %s\r\n", sanitizeCRLF(hostname))
 }
 
 // STARTTLS sends the STARTTLS command to upgrade the connection to TLS.
@@ -29,23 +45,23 @@ func STARTTLS() string {
 // Example: AUTH PLAIN AGpvaG5AZXhhbXBsZS5jb20AcGFzc3dvcmQ=
 func AUTH(mechanism string, initialResponse string) string {
 	if initialResponse != "" {
-		return fmt.Sprintf("AUTH %s %s\r\n", mechanism, initialResponse)
+		return fmt.Sprintf("AUTH %s %s\r\n", sanitizeCRLF(mechanism), sanitizeCRLF(initialResponse))
 	}
-	return fmt.Sprintf("AUTH %s\r\n", mechanism)
+	return fmt.Sprintf("AUTH %s\r\n", sanitizeCRLF(mechanism))
 }
 
 // MAILFROM sends the MAIL FROM command specifying the sender address.
 // The address should NOT include angle brackets - they're added automatically.
 // Example: MAIL FROM:<sender@example.com>
 func MAILFROM(address string) string {
-	return fmt.Sprintf("MAIL FROM:<%s>\r\n", address)
+	return fmt.Sprintf("MAIL FROM:<%s>\r\n", sanitizeCRLF(address))
 }
 
 // RCPTTO sends the RCPT TO command specifying a recipient address.
 // The address should NOT include angle brackets - they're added automatically.
 // Example: RCPT TO:<recipient@example.com>
 func RCPTTO(address string) string {
-	return fmt.Sprintf("RCPT TO:<%s>\r\n", address)
+	return fmt.Sprintf("RCPT TO:<%s>\r\n", sanitizeCRLF(address))
 }
 
 // DATA sends the DATA command to begin message transmission.
@@ -75,13 +91,13 @@ func QUIT() string {
 // VRFY sends the VERIFY command to check if a mailbox exists.
 // Many servers disable this for security/privacy reasons.
 func VRFY(address string) string {
-	return fmt.Sprintf("VRFY %s\r\n", address)
+	return fmt.Sprintf("VRFY %s\r\n", sanitizeCRLF(address))
 }
 
 // EXPN sends the EXPAND command to expand a mailing list.
 // Many servers disable this for security/privacy reasons.
 func EXPN(mailingList string) string {
-	return fmt.Sprintf("EXPN %s\r\n", mailingList)
+	return fmt.Sprintf("EXPN %s\r\n", sanitizeCRLF(mailingList))
 }
 
 // HELP sends the HELP command to request server help information.

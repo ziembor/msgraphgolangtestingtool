@@ -12,6 +12,70 @@ Please include as much information as possible to help us reproduce the issue. W
 
 ---
 
+## Security Assumptions and Threat Model
+
+### Tool Design and Context
+
+These tools (**msgraphgolangtestingtool** and **smtptool**) are designed as **diagnostic CLI utilities for authorized personnel**. Understanding the threat model is critical for proper security assessment:
+
+**✅ Trusted Input Sources:**
+- **CLI flags** (`-host`, `-subject`, `-from`, etc.) are provided by authorized users
+- **Environment variables** (`SMTPHOST`, `MSGRAPHSECRET`, etc.) are set by administrators
+- **Purpose**: Testing, diagnostics, troubleshooting, and automation by IT staff
+
+**✅ Intended Usage:**
+- Direct execution by authorized system administrators
+- Automation scripts in controlled environments
+- Testing and diagnostic workflows for email infrastructure
+- Troubleshooting connectivity and authentication issues
+
+**⚠️ NOT Designed For:**
+- ❌ Accepting input from untrusted sources (web forms, public APIs, user-generated content)
+- ❌ Running as a network service exposed to external requests
+- ❌ Processing arbitrary user input without validation
+- ❌ Public-facing interfaces or web applications
+
+### Defense-in-Depth Measures
+
+While CLI flags are trusted input, the tools implement defense-in-depth security measures:
+
+**CRLF Injection Prevention (v2.0.2+):**
+- All SMTP command parameters are sanitized to remove `\r` and `\n` characters
+- Email headers (From, To, Subject) are sanitized before message construction
+- **Note**: This is a best practice hardening measure, not a vulnerability fix
+
+**Input Validation:**
+- Email addresses validated against RFC 5322 format
+- Hostnames validated for proper format
+- Message IDs validated to prevent OData injection (see CVE-2026-MSGRAPH-001)
+
+**Credential Protection:**
+- Secrets masked in verbose output (shows `secr****cret`)
+- Passwords not logged in CSV files
+- Tokens truncated in debug output
+
+### Secure Deployment Guidelines
+
+If integrating these tools into larger systems:
+
+1. **✅ Validate External Input**: If your automation accepts input from external sources, validate it before passing to tool flags
+2. **✅ Least Privilege**: Run with service accounts that have minimum required permissions
+3. **✅ Access Control**: Restrict who can execute the tools using file system permissions
+4. **✅ Audit Logging**: Monitor tool usage via CSV logs and Azure AD/Microsoft 365 audit logs
+5. **✅ Network Security**: Use proxy settings to route traffic through monitoring systems
+
+### Reporting Security Concerns
+
+When reporting security issues, please provide:
+- **Context**: How is the tool being used? (Direct CLI execution, web service, automation, etc.)
+- **Input Source**: Where does the input come from? (Trusted admin, untrusted users, web form, etc.)
+- **Attack Scenario**: Specific steps to reproduce the security concern
+- **Impact Assessment**: What could an attacker achieve?
+
+**Important**: Issues that require an attacker to already have shell access (ability to execute arbitrary commands) are generally not considered security vulnerabilities, as shell access implies code execution capabilities exceeding any tool-specific risks.
+
+---
+
 ## Security Vulnerabilities Fixed
 
 ### CVE-2026-MSGRAPH-001: OData Injection in searchAndExport (v1.21.0 - v1.21.0)
