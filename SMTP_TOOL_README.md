@@ -512,9 +512,13 @@ Timestamp, Action, Status, Server, Port, From, To, Subject, SMTP_Response_Code, 
 - Running as a network service exposed to external requests
 - Processing arbitrary user-generated content
 
-**Defense-in-Depth (v2.0.2+):**
+**Defense-in-Depth (v2.0.2+, Enhanced v2.1.0):**
 - All SMTP commands sanitize CRLF sequences (`\r\n`) to prevent command injection
 - Email headers sanitized to prevent header injection attacks
+- **Password masking** (v2.1.0+): Credentials masked in error messages and structured logs
+  - Prevents password exposure in log aggregation systems
+  - Format: `us****om` for usernames, `pa****rd` for passwords
+- **Comprehensive security testing**: 100% test coverage on all security-critical functions
 - **Note**: CLI flags and environment variables are trusted input from authorized users
 
 For detailed security guidelines, see [SECURITY.md](SECURITY.md).

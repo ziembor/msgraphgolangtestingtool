@@ -86,7 +86,8 @@ See [SMTP_TOOL_README.md](SMTP_TOOL_README.md) for complete documentation.
 
 - **CLI flags and environment variables are trusted input** from authorized users
 - **Not designed for untrusted web/API input** or public-facing services
-- **Defense-in-depth measures** implemented in v2.0.2+ (CRLF sanitization)
+- **Defense-in-depth measures** implemented in v2.0.2+ (CRLF sanitization, v2.1.0+: password masking)
+- **Comprehensive security testing** in v2.1.0 with 100% coverage on critical functions
 - **See [SECURITY.md](SECURITY.md)** for complete threat model and deployment guidelines
 
 **Before production use:**

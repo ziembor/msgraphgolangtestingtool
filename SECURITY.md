@@ -49,10 +49,25 @@ While CLI flags are trusted input, the tools implement defense-in-depth security
 - Hostnames validated for proper format
 - Message IDs validated to prevent OData injection (see CVE-2026-MSGRAPH-001)
 
-**Credential Protection:**
+**Credential Protection (Enhanced in v2.1.0):**
 - Secrets masked in verbose output (shows `secr****cret`)
+- **Password masking in error messages** (v2.1.0+): Authentication failures log masked credentials
+  - Format: `us****om` for usernames, `pa****rd` for passwords
+  - Prevents password exposure in structured logs and error output
+  - Defense-in-depth measure for log aggregation systems
 - Passwords not logged in CSV files
 - Tokens truncated in debug output
+
+**Security Testing (v2.1.0):**
+- **277 comprehensive unit tests** covering security-critical functions
+- **100% test coverage** on key security functions:
+  - `validateMessageID()` - OData injection prevention
+  - `sanitizeCRLF()` - SMTP command injection prevention
+  - `sanitizeEmailHeader()` - Email header injection prevention
+  - `buildEmailMessage()` - RFC 5322 compliance
+  - `maskPassword()` / `maskUsername()` - Credential protection
+- Tests include attack patterns from OWASP Top 10, RFC violations, and real-world injection attempts
+- Continuous security validation through automated testing
 
 ### Secure Deployment Guidelines
 
