@@ -1,44 +1,84 @@
-# Microsoft Graph EXO Mails/Calendar Golang Testing Tool
+# Microsoft Graph & SMTP Testing Tools
 
-A portable, single-binary CLI tool for interacting with Microsoft Graph API to manage Exchange Online emails and calendar events.
+Portable, single-binary CLI tools for testing and managing email infrastructure - both cloud (Exchange Online via Microsoft Graph) and on-premises (SMTP servers).
 
 **Repository:** [https://github.com/ziembor/msgraphgolangtestingtool](https://github.com/ziembor/msgraphgolangtestingtool)
 
 ## Purpose
 
-This tool provides a lightweight, standalone executable for testing and managing Microsoft Graph API operations on Exchange Online mailboxes without requiring additional runtimes or dependencies. Cross-platform support for Windows, Linux, and macOS with multiple authentication methods and automatic CSV logging.
+This repository contains two complementary tools for comprehensive email infrastructure testing:
+
+- **msgraphgolangtestingtool**: Microsoft Graph API client for Exchange Online mailbox operations (send mail, calendar events, inbox management).
+- **smtptool**: SMTP connectivity testing tool with comprehensive TLS diagnostics for on-premises Exchange servers and generic SMTP servers.
+
+Both tools are lightweight, standalone executables requiring no additional runtimes or dependencies. Cross-platform support for Windows, Linux, and macOS with automatic CSV logging.
 
 ## Key Features
 
+### Microsoft Graph Tool (msgraphgolangtestingtool)
 - **Authentication**: Client Secret, PFX Certificate, Windows Certificate Store (Thumbprint).
 - **Operations**: Get Events, Send Mail, Send Invite, Get Inbox, Get Schedule, Export Inbox, Search and Export.
+- **Target**: Exchange Online (cloud-based) mailboxes.
+
+### SMTP Tool (smtptool)
+- **Operations**: Test Connect, Test STARTTLS (comprehensive TLS diagnostics), Test Auth, Send Mail.
+- **Diagnostics**: SSL/TLS handshake analysis, certificate validation, cipher strength assessment, Exchange detection.
+- **Target**: On-premises Exchange servers and generic SMTP servers.
+
+### Both Tools
 - **Logging**: Automatic CSV logging of all operations to `%TEMP%`.
 - **Portable**: Single binary, no dependencies.
 
 ## Documentation
 
-- **[BUILD.md](BUILD.md)**: Build instructions.
+- **[BUILD.md](BUILD.md)**: Build instructions for both tools.
+- **[SMTP_TOOL_README.md](SMTP_TOOL_README.md)**: Complete SMTP tool documentation and usage guide.
+- **[EXAMPLES.md](EXAMPLES.md)**: Microsoft Graph tool usage examples.
 - **[RELEASE.md](RELEASE.md)**: Release process and versioning policy.
-- **[EXAMPLES.md](EXAMPLES.md)**: Comprehensive usage examples.
 - **[SECURITY.md](SECURITY.md)**: Security policy and best practices.
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**: Common errors and solutions.
 
 ## Quick Start
 
-### Build
+### Build Both Tools
 ```powershell
-go build -C src -o msgraphgolangtestingtool.exe
-```
-See [BUILD.md](BUILD.md) for details.
+# Build both tools at once
+.\build-all.ps1
 
-### Usage
-```powershell
-.\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getevents
+# Or build individually
+go build -C cmd/msgraphtool -o msgraphgolangtestingtool.exe
+go build -C cmd/smtptool -o smtptool.exe
 ```
-See [EXAMPLES.md](EXAMPLES.md) for more scenarios.
+See [BUILD.md](BUILD.md) for cross-platform builds and additional options.
+
+### Usage Examples
+
+**Microsoft Graph Tool:**
+```powershell
+# Get calendar events
+.\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getevents
+
+# Send email
+.\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action sendmail
+```
+See [EXAMPLES.md](EXAMPLES.md) for comprehensive scenarios.
+
+**SMTP Tool:**
+```powershell
+# Test SMTP connectivity
+.\smtptool.exe -action testconnect -host smtp.example.com -port 25
+
+# Test STARTTLS with comprehensive TLS diagnostics
+.\smtptool.exe -action teststarttls -host smtp.example.com -port 587
+
+# Send test email
+.\smtptool.exe -action sendmail -host smtp.example.com -port 587 -username "user@example.com" -password "..." -from "sender@example.com" -to "recipient@example.com"
+```
+See [SMTP_TOOL_README.md](SMTP_TOOL_README.md) for complete documentation.
 
 ### Environment Variables
-All flags can be set via `MSGRAPH` prefix (e.g., `MSGRAPHTENANTID`, `MSGRAPHSECRET`).
+- **Microsoft Graph Tool**: `MSGRAPH` prefix (e.g., `MSGRAPHTENANTID`, `MSGRAPHSECRET`)
+- **SMTP Tool**: `SMTP` prefix (e.g., `SMTPHOST`, `SMTPPORT`, `SMTPUSERNAME`)
 
 ## License
 This tool is provided as-is for testing and automation purposes.

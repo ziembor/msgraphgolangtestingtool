@@ -1,20 +1,25 @@
-# Portable Microsoft Graph EXO Mails/Calendar Golang CLI Tool
+# Microsoft Graph & SMTP Testing Tools
 
 **Repository:** [https://github.com/ziembor/msgraphgolangtestingtool](https://github.com/ziembor/msgraphgolangtestingtool)
 
 ## Overview
 
-This is a lightweight, portable command-line interface (CLI) tool written in **Go (Golang)** with cross-platform support for **Windows, Linux, and macOS**. It allows interactions with the **Microsoft Graph API** to manage emails and calendar events on Exchange Online (EXO) mailboxes.
+This repository contains two complementary, lightweight, portable command-line interface (CLI) tools written in **Go (Golang)** with cross-platform support for **Windows, Linux, and macOS**:
 
-The tool is designed for **minimal external dependencies** — it compiles into a single static binary that does not require installing runtimes or libraries on the target machine.
+- **msgraphgolangtestingtool**: Interacts with the **Microsoft Graph API** to manage emails and calendar events on Exchange Online (EXO) mailboxes.
+- **smtptool**: Tests SMTP connectivity with comprehensive TLS diagnostics for on-premises Exchange servers and generic SMTP servers.
+
+Both tools are designed for **minimal external dependencies** — they compile into single static binaries that do not require installing runtimes or libraries on the target machine.
 
 ## Features
+
+### Microsoft Graph Tool (msgraphgolangtestingtool)
 
 * **Authentication Modes:**
   * **Client Secret:** Standard App Registration secret.
   * **Certificate (PFX):** Secure, password-protected PFX file support.
   * **Windows Certificate Store:** Use certificates directly from the Current User's Personal ("My") store via Thumbprint (requires no physical file management).
- **Graph Operations:**
+* **Graph Operations:**
   * **Send Mail:** Send Text emails via the Graph API with support for:
     * Custom Subject and Body.
     * Multiple To, CC, and BCC recipients.
@@ -25,17 +30,41 @@ The tool is designed for **minimal external dependencies** — it compiles into 
   * **Check Availability:** Check recipient availability for next working day at 12:00 UTC (returns Free/Busy status).
   * **Export Inbox:** Export inbox messages to individual JSON files in date-stamped directories (`%TEMP%\export\{date}`).
   * **Search and Export:** Find and export specific email by Internet Message ID to JSON file.
- **Network:**
+* **Network:**
   * **Proxy Support:** Route traffic through HTTP/HTTPS proxies via flag or environment variable.
+
+### SMTP Tool (smtptool)
+
+* **SMTP Operations:**
+  * **Test Connect:** Basic SMTP connectivity with capability detection and Exchange server detection.
+  * **Test STARTTLS:** Comprehensive TLS diagnostics including:
+    * SSL/TLS handshake analysis
+    * Certificate chain validation
+    * Cipher suite and strength assessment
+    * Protocol version detection
+    * Hostname verification
+    * Expiry warnings
+  * **Test Auth:** SMTP authentication testing with mechanism auto-selection (PLAIN, LOGIN, CRAM-MD5).
+  * **Send Mail:** End-to-end email sending with STARTTLS and authentication support.
+* **Diagnostics:**
+  * Exchange version detection (2003-2019)
+  * TLS warnings for deprecated protocols and weak ciphers
+  * Certificate validation with detailed error reporting
+
+### Both Tools
+
 * **CSV Logging:**
-  * All operations are automatically logged to `%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`
-  * Each action type creates its own log file (e.g., `sendmail_2026-01-03.csv`, `getevents_2026-01-03.csv`)
+  * All operations are automatically logged to `%TEMP%\_{toolname}_{action}_{date}.csv`
+  * Each action type creates its own log file
   * Includes timestamps and action-specific details
   * Output shown on screen and written to CSV simultaneously
 
 ## Versioning
 
-The project follows Semantic Versioning, but the **major version is locked at 1** and cannot be upgraded. All breaking changes or major features will be released as minor version increments within the 1.x.y branch.
+The project follows Semantic Versioning (x.y.z):
+- **Major (x):** Breaking changes, major architectural shifts, new tools/executables
+- **Minor (y):** New features, significant enhancements
+- **Patch (z):** Bug fixes, documentation updates
 
 **Version Management:**
 - Current version is stored in `src/VERSION`
@@ -63,40 +92,79 @@ See **[EXAMPLES.md](EXAMPLES.md)** for detailed usage scenarios.
 
 ### Project Structure
 
-**IMPORTANT:** All Go and PowerShell source code must be kept in the `src/` directory.
+The repository uses a modular structure with shared internal packages:
 
 ```
 msgraphgolangtestingtool/
-├── src/                          # All source code
-│   ├── *.go                      # Go source files
-│   ├── go.mod                    # Go module definition
-│   ├── go.sum                    # Go dependencies
-│   ├── VERSION                   # Version file (embedded at compile time)
-│   └── *.ps1                     # PowerShell scripts (if any)
-├── run-integration-tests.ps1                   # Release automation script (project root)
-├── selfsignedcert.ps1            # Certificate generation script (project root)
+├── cmd/
+│   ├── msgraphtool/              # Microsoft Graph tool source
+│   │   ├── main.go
+│   │   ├── config.go
+│   │   ├── handlers.go
+│   │   ├── auth.go
+│   │   └── completions.go
+│   └── smtptool/                 # SMTP tool source
+│       ├── main.go
+│       ├── config.go
+│       ├── handlers.go
+│       ├── smtp_client.go
+│       ├── smtp_connect.go
+│       ├── smtp_starttls.go
+│       ├── smtp_auth.go
+│       ├── smtp_sendmail.go
+│       └── completions.go
+├── internal/
+│   ├── common/                   # Shared packages (70-80% code reuse)
+│   │   ├── logger/               # CSV and structured logging
+│   │   ├── retry/                # Retry with exponential backoff
+│   │   ├── version/              # Version embedding
+│   │   └── validation/           # Input validators
+│   ├── msgraph/                  # Graph-specific code
+│   └── smtp/                     # SMTP-specific code
+│       ├── protocol/             # SMTP command builders and response parsing
+│       ├── tls/                  # TLS handshake and certificate analysis
+│       └── exchange/             # Exchange detection
+├── src/
+│   └── VERSION                   # Version file (embedded at compile time)
+├── build-all.ps1                 # Build script for both tools
+├── run-integration-tests.ps1     # Release automation script
+├── selfsignedcert.ps1            # Certificate generation script
 ├── Changelog/                    # Version changelogs
 ├── CLAUDE.md                     # Project documentation (this file)
+├── BUILD.md                      # Build instructions
+├── SMTP_TOOL_README.md           # SMTP tool documentation
 └── README.md                     # Public documentation
 ```
 
 **Key Points:**
-- `go.mod` and `go.sum` are in `src/`
-- The `VERSION` file is in `src/`
-- Build from project root: `go build -C src -o msgraphgolangtestingtool.exe`
+- Root `go.mod` and `go.sum` in project root
+- VERSION file remains in `src/` for backward compatibility
+- Build both tools: `.\build-all.ps1`
+- Build individually: `go build -C cmd/msgraphtool` or `go build -C cmd/smtptool`
 
 ### CSV Logging
 
-All operations are automatically logged to action-specific CSV files in the Windows temp directory (`%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`).
+All operations are automatically logged to action-specific CSV files in the temp directory:
+- Microsoft Graph Tool: `%TEMP%\_msgraphgolangtestingtool_{action}_{date}.csv`
+- SMTP Tool: `%TEMP%\_smtptool_{action}_{date}.csv`
 
 ## Build and Run Commands
 
 ```powershell
-# Build the executable from project root
-go build -C src -o msgraphgolangtestingtool.exe
+# Build both tools at once (recommended)
+.\build-all.ps1
 
-# Run with Go (development) from src directory
-cd src
+# Build Microsoft Graph tool individually
+go build -C cmd/msgraphtool -o msgraphgolangtestingtool.exe
+
+# Build SMTP tool individually
+go build -C cmd/smtptool -o smtptool.exe
+
+# Run with Go (development)
+cd cmd/msgraphtool
+go run . [flags]
+
+cd cmd/smtptool
 go run . [flags]
 ```
 
@@ -116,9 +184,10 @@ See **[RELEASE.md](RELEASE.md)** for the complete release guide.
 ## Documentation Reference
 
 - **[RELEASE.md](RELEASE.md)** - Release process and versioning policy.
-- **[BUILD.md](BUILD.md)** - Build instructions.
+- **[BUILD.md](BUILD.md)** - Build instructions for both tools.
 - **[README.md](README.md)** - User-facing documentation.
-- **[EXAMPLES.md](EXAMPLES.md)** - Usage examples.
+- **[SMTP_TOOL_README.md](SMTP_TOOL_README.md)** - Complete SMTP tool documentation.
+- **[EXAMPLES.md](EXAMPLES.md)** - Microsoft Graph tool usage examples.
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices.
 
                           ..ooOO END OOoo..
