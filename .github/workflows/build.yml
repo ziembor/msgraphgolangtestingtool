@@ -16,15 +16,18 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
-            binary_name: msgraphgolangtestingtool.exe
+            graph_binary: msgraphgolangtestingtool.exe
+            smtp_binary: smtptool.exe
             artifact_name: msgraphgolangtestingtool-windows
             zip_name: msgraphgolangtestingtool-windows.zip
           - os: ubuntu-latest
-            binary_name: msgraphgolangtestingtool
+            graph_binary: msgraphgolangtestingtool
+            smtp_binary: smtptool
             artifact_name: msgraphgolangtestingtool-linux
             zip_name: msgraphgolangtestingtool-linux.zip
           - os: macos-latest
-            binary_name: msgraphgolangtestingtool
+            graph_binary: msgraphgolangtestingtool
+            smtp_binary: smtptool
             artifact_name: msgraphgolangtestingtool-macos
             zip_name: msgraphgolangtestingtool-macos.zip
 
@@ -32,77 +35,85 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version: '1.24'
 
-    - name: Build (Windows)
+    - name: Build Microsoft Graph Tool (Windows)
       if: matrix.os == 'windows-latest'
-      run: go build -C src -o ../${{ matrix.binary_name }}
-
-    - name: Build (Linux)
-      if: matrix.os == 'ubuntu-latest'
       run: |
-        cd src
-        go build -o ../${{ matrix.binary_name }}
+        cd cmd/msgraphtool
+        go build -ldflags="-s -w" -o ../../${{ matrix.graph_binary }}
+        cd ../..
 
-    - name: Build (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: Build SMTP Tool (Windows)
+      if: matrix.os == 'windows-latest'
       run: |
-        cd src
-        go build -o ../${{ matrix.binary_name }}
+        cd cmd/smtptool
+        go build -ldflags="-s -w" -o ../../${{ matrix.smtp_binary }}
+        cd ../..
+
+    - name: Build Microsoft Graph Tool (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        cd cmd/msgraphtool
+        go build -ldflags="-s -w" -o ../../${{ matrix.graph_binary }}
+        cd ../..
+
+    - name: Build SMTP Tool (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        cd cmd/smtptool
+        go build -ldflags="-s -w" -o ../../${{ matrix.smtp_binary }}
+        cd ../..
 
     - name: Verify build output (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        if (Test-Path ${{ matrix.binary_name }}) {
-          Write-Host "Build successful: ${{ matrix.binary_name }} found"
-          Get-Item ${{ matrix.binary_name }} | Select-Object Name, Length, LastWriteTime
+        if (Test-Path ${{ matrix.graph_binary }}) {
+          Write-Host "✓ Graph tool build successful: ${{ matrix.graph_binary }}"
+          Get-Item ${{ matrix.graph_binary }} | Select-Object Name, Length
         } else {
-          Write-Error "Build failed: ${{ matrix.binary_name }} not found"
+          Write-Error "✗ Graph tool build failed"
+          exit 1
+        }
+        if (Test-Path ${{ matrix.smtp_binary }}) {
+          Write-Host "✓ SMTP tool build successful: ${{ matrix.smtp_binary }}"
+          Get-Item ${{ matrix.smtp_binary }} | Select-Object Name, Length
+        } else {
+          Write-Error "✗ SMTP tool build failed"
           exit 1
         }
 
-    - name: Verify build output (Linux)
-      if: matrix.os == 'ubuntu-latest'
+    - name: Verify build output (Linux/macOS)
+      if: matrix.os != 'windows-latest'
       run: |
-        if [ -f "${{ matrix.binary_name }}" ]; then
-          echo "Build successful: ${{ matrix.binary_name }} found"
-          ls -lh ${{ matrix.binary_name }}
+        if [ -f "${{ matrix.graph_binary }}" ]; then
+          echo "✓ Graph tool build successful: ${{ matrix.graph_binary }}"
+          ls -lh ${{ matrix.graph_binary }}
         else
-          echo "Build failed: ${{ matrix.binary_name }} not found"
+          echo "✗ Graph tool build failed"
           exit 1
         fi
-
-    - name: Verify build output (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        if [ -f "${{ matrix.binary_name }}" ]; then
-          echo "Build successful: ${{ matrix.binary_name }} found"
-          ls -lh ${{ matrix.binary_name }}
+        if [ -f "${{ matrix.smtp_binary }}" ]; then
+          echo "✓ SMTP tool build successful: ${{ matrix.smtp_binary }}"
+          ls -lh ${{ matrix.smtp_binary }}
         else
-          echo "Build failed: ${{ matrix.binary_name }} not found"
+          echo "✗ SMTP tool build failed"
           exit 1
         fi
 
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path ${{ matrix.binary_name }},EXAMPLES.md,LICENSE,README.md -DestinationPath ${{ matrix.zip_name }}
+        Compress-Archive -Path ${{ matrix.graph_binary }},${{ matrix.smtp_binary }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
         Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
         Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
 
-    - name: Create ZIP archive (Linux)
-      if: matrix.os == 'ubuntu-latest'
+    - name: Create ZIP archive (Linux/macOS)
+      if: matrix.os != 'windows-latest'
       run: |
-        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }} EXAMPLES.md LICENSE README.md
-        echo "Created ZIP archive: ${{ matrix.zip_name }}"
-        ls -lh ${{ matrix.zip_name }}
-
-    - name: Create ZIP archive (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        zip ${{ matrix.zip_name }} ${{ matrix.binary_name }} EXAMPLES.md LICENSE README.md
+        zip ${{ matrix.zip_name }} ${{ matrix.graph_binary }} ${{ matrix.smtp_binary }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
         ls -lh ${{ matrix.zip_name }}
 
@@ -117,54 +128,91 @@ jobs:
       with:
         files: ${{ matrix.zip_name }}
         body: |
-          ## Microsoft Graph EXO Mails/Calendar Golang Testing Tool
+          ## Microsoft Graph & SMTP Testing Tools
 
-          Portable CLI tool for Microsoft Graph API operations.
+          Portable CLI tools for comprehensive email infrastructure testing - both cloud (Exchange Online via Microsoft Graph) and on-premises (SMTP servers).
 
           ### What's Included
 
           Each ZIP archive contains:
-          - **Binary executable** (`msgraphgolangtestingtool.exe` or `msgraphgolangtestingtool`)
-          - **EXAMPLES.md** - Comprehensive usage examples
+          - **msgraphgolangtestingtool** - Microsoft Graph API tool for Exchange Online
+          - **smtptool** - SMTP connectivity testing tool with comprehensive TLS diagnostics
+          - **README.md** - Main documentation
+          - **SMTP_TOOL_README.md** - Complete SMTP tool guide
+          - **BUILD.md** - Build instructions for both tools
+          - **EXAMPLES.md** - Microsoft Graph tool usage examples
           - **LICENSE** - MIT License
-          - **README.md** - Complete documentation
 
           ### Installation
+
           **Windows:**
           1. Download `msgraphgolangtestingtool-windows.zip`
           2. Extract the ZIP file
-          3. Run `msgraphgolangtestingtool.exe` directly
+          3. Run `msgraphgolangtestingtool.exe` or `smtptool.exe` directly
 
           **Linux:**
           1. Download `msgraphgolangtestingtool-linux.zip`
-          2. Extract the ZIP file: `unzip msgraphgolangtestingtool-linux.zip`
-          3. Make it executable: `chmod +x msgraphgolangtestingtool`
-          4. Run: `./msgraphgolangtestingtool`
+          2. Extract: `unzip msgraphgolangtestingtool-linux.zip`
+          3. Make executable: `chmod +x msgraphgolangtestingtool smtptool`
+          4. Run: `./msgraphgolangtestingtool` or `./smtptool`
 
           **macOS:**
           1. Download `msgraphgolangtestingtool-macos.zip`
-          2. Extract the ZIP file: `unzip msgraphgolangtestingtool-macos.zip`
-          3. Make it executable: `chmod +x msgraphgolangtestingtool`
-          4. Run: `./msgraphgolangtestingtool`
+          2. Extract: `unzip msgraphgolangtestingtool-macos.zip`
+          3. Make executable: `chmod +x msgraphgolangtestingtool smtptool`
+          4. Run: `./msgraphgolangtestingtool` or `./smtptool`
 
-          **Note for macOS:** If you see "cannot be opened because the developer cannot be verified", you may need to:
+          **Note for macOS:** If you see "cannot be opened because the developer cannot be verified":
           - Right-click the binary and select "Open", or
-          - Run: `xattr -d com.apple.quarantine msgraphgolangtestingtool`
+          - Run: `xattr -d com.apple.quarantine msgraphgolangtestingtool smtptool`
 
           ### Quick Start
-          **Windows:**
-          ```powershell
-          .\msgraphgolangtestingtool.exe -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+
+          **Microsoft Graph Tool:**
+          ```bash
+          # Windows
+          .\msgraphgolangtestingtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getinbox
+
+          # Linux/macOS
+          ./msgraphgolangtestingtool -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getinbox
           ```
 
-          **Linux / macOS:**
+          **SMTP Tool:**
           ```bash
-          ./msgraphgolangtestingtool -tenantid "<TENANT_ID>" -clientid "<CLIENT_ID>" -secret "<SECRET>" -mailbox "<EMAIL>" -action <ACTION>
+          # Windows - Test connectivity
+          .\smtptool.exe -action testconnect -host smtp.example.com -port 25
+
+          # Windows - Comprehensive TLS diagnostics
+          .\smtptool.exe -action teststarttls -host smtp.example.com -port 587
+
+          # Linux/macOS - Test connectivity
+          ./smtptool -action testconnect -host smtp.example.com -port 25
+
+          # Linux/macOS - Comprehensive TLS diagnostics
+          ./smtptool -action teststarttls -host smtp.example.com -port 587
           ```
 
           ### Documentation
-          - See **EXAMPLES.md** in the ZIP for detailed usage examples
-          - See **README.md** in the ZIP for complete reference
-          - Online: [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+          - **README.md** - Overview and quick start for both tools
+          - **SMTP_TOOL_README.md** - Complete SMTP tool documentation with all actions
+          - **EXAMPLES.md** - Detailed Microsoft Graph tool examples
+          - **BUILD.md** - Build from source instructions
+          - Online: [GitHub Repository](https://github.com/${{ github.repository }})
+
+          ### Tools Overview
+
+          **msgraphgolangtestingtool** - Microsoft Graph API operations:
+          - Send emails, create calendar events
+          - List inbox messages and calendar events
+          - Check availability, export data
+          - Multiple authentication methods (Client Secret, PFX Certificate, Windows Certificate Store)
+
+          **smtptool** - SMTP connectivity testing:
+          - Test basic SMTP connectivity with capability detection
+          - Comprehensive TLS/SSL handshake analysis
+          - Certificate chain validation and expiry warnings
+          - SMTP authentication testing
+          - Send test emails
+          - Exchange server detection (2003-2019)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
