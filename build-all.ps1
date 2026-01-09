@@ -38,14 +38,19 @@ Write-ColorOutput "  Location: cmd/msgraphtool" "Gray"
 Write-ColorOutput "  Output:   msgraphgolangtestingtool.exe`n" "Gray"
 
 try {
+    $buildDir = Join-Path $PSScriptRoot "cmd" "msgraphtool"
+    $outputFile = Join-Path $PSScriptRoot "msgraphgolangtestingtool.exe"
+
+    Push-Location $buildDir
     if ($Verbose) {
-        go build -C cmd/msgraphtool -v -ldflags="-s -w" -o msgraphgolangtestingtool.exe
+        go build -v -ldflags="-s -w" -o $outputFile
     } else {
-        go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphgolangtestingtool.exe
+        go build -ldflags="-s -w" -o $outputFile
     }
+    Pop-Location
 
     if ($LASTEXITCODE -eq 0) {
-        $size = (Get-Item "msgraphgolangtestingtool.exe").Length / 1MB
+        $size = (Get-Item $outputFile).Length / 1MB
         Write-ColorOutput "  ✓ Build successful (Size: $($size.ToString('N2')) MB)" "Green"
     } else {
         throw "Build failed with exit code $LASTEXITCODE"
@@ -61,14 +66,19 @@ Write-ColorOutput "  Location: cmd/smtptool" "Gray"
 Write-ColorOutput "  Output:   smtptool.exe`n" "Gray"
 
 try {
+    $buildDir = Join-Path $PSScriptRoot "cmd" "smtptool"
+    $outputFile = Join-Path $PSScriptRoot "smtptool.exe"
+
+    Push-Location $buildDir
     if ($Verbose) {
-        go build -C cmd/smtptool -v -ldflags="-s -w" -o smtptool.exe
+        go build -v -ldflags="-s -w" -o $outputFile
     } else {
-        go build -C cmd/smtptool -ldflags="-s -w" -o smtptool.exe
+        go build -ldflags="-s -w" -o $outputFile
     }
+    Pop-Location
 
     if ($LASTEXITCODE -eq 0) {
-        $size = (Get-Item "smtptool.exe").Length / 1MB
+        $size = (Get-Item $outputFile).Length / 1MB
         Write-ColorOutput "  ✓ Build successful (Size: $($size.ToString('N2')) MB)" "Green"
     } else {
         throw "Build failed with exit code $LASTEXITCODE"
@@ -84,7 +94,8 @@ if (-not $SkipTests) {
 
     # Test Graph tool version
     Write-ColorOutput "  Testing msgraphgolangtestingtool version..." "Gray"
-    $graphVersion = & ".\msgraphgolangtestingtool.exe" -version
+    $graphExe = Join-Path $PSScriptRoot "msgraphgolangtestingtool.exe"
+    $graphVersion = & $graphExe -version
     if ($graphVersion -match $version) {
         Write-ColorOutput "    ✓ Version correct: $version" "Green"
     } else {
@@ -93,7 +104,8 @@ if (-not $SkipTests) {
 
     # Test SMTP tool version
     Write-ColorOutput "  Testing smtptool version..." "Gray"
-    $smtpVersion = & ".\smtptool.exe" -version
+    $smtpExe = Join-Path $PSScriptRoot "smtptool.exe"
+    $smtpVersion = & $smtpExe -version
     if ($smtpVersion -match $version) {
         Write-ColorOutput "    ✓ Version correct: $version" "Green"
     } else {

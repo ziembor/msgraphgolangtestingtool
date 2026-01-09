@@ -7,9 +7,9 @@ import (
 
 // Version information embedded from VERSION file
 // This package provides centralized version management for all tools in the repository.
-// The VERSION file is located at src/VERSION and is embedded at compile time.
+// The VERSION file is located at the module root and is embedded at compile time.
 
-//go:embed ../../../src/VERSION
+//go:embed VERSION
 var versionRaw string
 
 // Version is the current version of the tool suite, trimmed of whitespace.

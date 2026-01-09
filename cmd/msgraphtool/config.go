@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -506,7 +505,7 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 
 	fmt.Println("Final Configuration (after env vars + flags):")
 	fmt.Println("----------------------------------------------")
-	fmt.Printf("Version: %s\n", version)
+	fmt.Printf("Version: %s\n", version.Get())
 	fmt.Printf("Tenant ID: %s\n", tenantID)
 	fmt.Printf("Client ID: %s\n", clientID)
 	fmt.Printf("Mailbox: %s\n", mailbox)

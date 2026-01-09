@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strings"
-	"time"
 )
 
 // TLSInfo holds information about a TLS connection.
@@ -118,7 +117,6 @@ func CheckTLSWarnings(tlsInfo *TLSInfo, certInfo *CertificateInfo, skipVerify bo
 	// Certificate warnings
 	if certInfo != nil {
 		// Expiration warnings
-		now := time.Now()
 		if certInfo.IsExpired {
 			warnings = append(warnings, fmt.Sprintf("Certificate expired on %s", certInfo.ValidTo.Format("2006-01-02")))
 		} else if certInfo.DaysUntilExpiry < 30 && certInfo.DaysUntilExpiry >= 0 {
