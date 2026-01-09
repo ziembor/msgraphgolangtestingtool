@@ -146,14 +146,25 @@ func sendMail(ctx context.Context, config *Config, csvLogger *logger.CSVLogger, 
 }
 
 // buildEmailMessage constructs an RFC 5322 email message.
+// Defense-in-Depth: Email headers (From, To, Subject) are sanitized to remove
+// CRLF sequences that could be used for header injection attacks. The message
+// body is not sanitized as it legitimately may contain newlines.
 func buildEmailMessage(from string, to []string, subject, body string) []byte {
 	messageID := generateMessageID("")
 	date := time.Now().Format(time.RFC1123Z)
 
+	// Sanitize header fields to prevent header injection
+	from = sanitizeEmailHeader(from)
+	subject = sanitizeEmailHeader(subject)
+	sanitizedTo := make([]string, len(to))
+	for i, addr := range to {
+		sanitizedTo[i] = sanitizeEmailHeader(addr)
+	}
+
 	message := fmt.Sprintf("Message-ID: <%s>\r\n", messageID)
 	message += fmt.Sprintf("Date: %s\r\n", date)
 	message += fmt.Sprintf("From: %s\r\n", from)
-	message += fmt.Sprintf("To: %s\r\n", strings.Join(to, ", "))
+	message += fmt.Sprintf("To: %s\r\n", strings.Join(sanitizedTo, ", "))
 	message += fmt.Sprintf("Subject: %s\r\n", subject)
 	message += "MIME-Version: 1.0\r\n"
 	message += "Content-Type: text/plain; charset=UTF-8\r\n"
@@ -162,6 +173,14 @@ func buildEmailMessage(from string, to []string, subject, body string) []byte {
 	message += "\r\n"
 
 	return []byte(message)
+}
+
+// sanitizeEmailHeader removes CRLF sequences from email header values to prevent
+// header injection attacks. This is a defense-in-depth measure.
+func sanitizeEmailHeader(header string) string {
+	header = strings.ReplaceAll(header, "\r", "")
+	header = strings.ReplaceAll(header, "\n", "")
+	return header
 }
 
 // generateMessageID creates a unique message ID.

@@ -35,7 +35,7 @@ Both tools are lightweight, standalone executables requiring no additional runti
 - **[SMTP_TOOL_README.md](SMTP_TOOL_README.md)**: Complete SMTP tool documentation and usage guide.
 - **[EXAMPLES.md](EXAMPLES.md)**: Microsoft Graph tool usage examples.
 - **[RELEASE.md](RELEASE.md)**: Release process and versioning policy.
-- **[SECURITY.md](SECURITY.md)**: Security policy and best practices.
+- **[SECURITY.md](SECURITY.md)**: Security policy, threat model, and best practices ⚠️ **Read this before production use**.
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**: Common errors and solutions.
 
 ## Quick Start
@@ -79,6 +79,21 @@ See [SMTP_TOOL_README.md](SMTP_TOOL_README.md) for complete documentation.
 ### Environment Variables
 - **Microsoft Graph Tool**: `MSGRAPH` prefix (e.g., `MSGRAPHTENANTID`, `MSGRAPHSECRET`)
 - **SMTP Tool**: `SMTP` prefix (e.g., `SMTPHOST`, `SMTPPORT`, `SMTPUSERNAME`)
+
+## Security Considerations
+
+⚠️ **Important**: These are diagnostic CLI tools designed for authorized personnel (system administrators, IT staff).
+
+- **CLI flags and environment variables are trusted input** from authorized users
+- **Not designed for untrusted web/API input** or public-facing services
+- **Defense-in-depth measures** implemented in v2.0.2+ (CRLF sanitization)
+- **See [SECURITY.md](SECURITY.md)** for complete threat model and deployment guidelines
+
+**Before production use:**
+1. Review [SECURITY.md](SECURITY.md) for security assumptions
+2. Follow credential management best practices
+3. Restrict tool execution to authorized personnel
+4. Monitor CSV logs for unauthorized usage
 
 ## License
 This tool is provided as-is for testing and automation purposes.

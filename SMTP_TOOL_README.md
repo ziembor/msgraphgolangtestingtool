@@ -497,27 +497,65 @@ Timestamp, Action, Status, Server, Port, From, To, Subject, SMTP_Response_Code, 
 
 ## Security Best Practices
 
+### Tool Design and Threat Model
+
+**smtptool** is a **diagnostic CLI utility for authorized personnel**:
+
+✅ **Designed For:**
+- Direct execution by system administrators
+- SMTP infrastructure testing and diagnostics
+- Troubleshooting connectivity and authentication issues
+- Automation in controlled IT environments
+
+❌ **NOT Designed For:**
+- Accepting input from untrusted sources (web forms, public APIs)
+- Running as a network service exposed to external requests
+- Processing arbitrary user-generated content
+
+**Defense-in-Depth (v2.0.2+):**
+- All SMTP commands sanitize CRLF sequences (`\r\n`) to prevent command injection
+- Email headers sanitized to prevent header injection attacks
+- **Note**: CLI flags and environment variables are trusted input from authorized users
+
+For detailed security guidelines, see [SECURITY.md](SECURITY.md).
+
+---
+
+### Secure Usage Guidelines
+
 ⚠ **Important Security Notes:**
 
 1. **Password Safety**:
    - Never commit passwords to version control
-   - Use environment variables for credentials
+   - Use environment variables for credentials (`$env:SMTPPASSWORD`)
+   - Clear credentials after use: `Remove-Item Env:\SMTPPASSWORD`
    - Consider using application-specific passwords
+   - Avoid passing passwords as CLI flags (visible in process list)
 
 2. **Certificate Verification**:
    - Never use `-skipverify` in production
    - Only use for debugging with self-signed certificates
-   - Always validate certificate hostnames
+   - Always validate certificate hostnames in production
+   - Monitor certificate expiration warnings from `teststarttls`
 
 3. **TLS Configuration**:
    - Use TLS 1.2 or higher (`-tlsversion 1.2`)
-   - Avoid deprecated TLS 1.0/1.1
+   - Avoid deprecated TLS 1.0/1.1 (generates warnings)
    - Monitor cipher suite strength warnings
+   - Review TLS diagnostics output for security issues
 
 4. **Logging**:
-   - CSV logs may contain sensitive information
-   - Review and secure log files in `%TEMP%`
-   - Consider log rotation for long-term operations
+   - CSV logs may contain sensitive information (usernames, email addresses)
+   - Review and secure log files in `%TEMP%` (consider encryption)
+   - Implement log rotation for long-term operations
+   - Set restrictive file permissions on logs (Windows: Administrators only)
+   - CSV logs: `%TEMP%\_smtptool_{action}_{date}.csv`
+
+5. **Access Control**:
+   - Restrict who can execute the tool using file system permissions
+   - Use dedicated service accounts for automation (not personal accounts)
+   - Monitor tool execution via system audit logs
+   - Review CSV logs periodically for unauthorized usage
 
 ## Advanced Usage
 
