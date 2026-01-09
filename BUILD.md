@@ -1,71 +1,231 @@
 # Build Instructions
 
-This document provides instructions for building the `msgraphgolangtestingtool` executable.
+This document provides instructions for building both tools in this repository:
+- **msgraphgolangtestingtool**: Microsoft Graph API tool for Exchange Online
+- **smtptool**: SMTP connectivity testing tool
 
 ## Prerequisites
 
-1. **Go 1.25+**: [Download Go](https://golang.org/dl/)
+1. **Go 1.24+**: [Download Go](https://golang.org/dl/)
 2. **Git**: [Download Git](https://git-scm.com/downloads)
 
-## Build Steps
+## Quick Build (Both Tools)
 
-All Go source code is located in the `src/` directory.
-
-### 1. Standard Build
-Creates `msgraphgolangtestingtool.exe` in the project root.
+The easiest way to build both tools is using the build script:
 
 ```powershell
-# Build from project root
+# From project root
+.\build-all.ps1
+```
+
+This creates both executables in the project root:
+- `msgraphgolangtestingtool.exe`
+- `smtptool.exe`
+
+## Individual Tool Builds
+
+### Microsoft Graph Tool
+
+```powershell
+# Standard build
+go build -C cmd/msgraphtool -o msgraphgolangtestingtool.exe
+
+# Optimized build (recommended for production)
+go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphgolangtestingtool.exe
+```
+
+### SMTP Tool
+
+```powershell
+# Standard build
+go build -C cmd/smtptool -o smtptool.exe
+
+# Optimized build (recommended for production)
+go build -C cmd/smtptool -ldflags="-s -w" -o smtptool.exe
+```
+
+## Cross-Platform Builds
+
+Both tools support Windows, Linux, and macOS.
+
+### Build for Linux
+
+```powershell
+# Microsoft Graph Tool
+$env:GOOS="linux"; $env:GOARCH="amd64"
+go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphgolangtestingtool
+Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
+
+# SMTP Tool
+$env:GOOS="linux"; $env:GOARCH="amd64"
+go build -C cmd/smtptool -ldflags="-s -w" -o smtptool
+Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
+```
+
+**Note:** Windows Certificate Store authentication (`-thumbprint` flag) is only available on Windows builds.
+
+### Build for macOS
+
+```powershell
+# Microsoft Graph Tool
+$env:GOOS="darwin"; $env:GOARCH="amd64"
+go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphgolangtestingtool
+Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
+
+# SMTP Tool (Apple Silicon)
+$env:GOOS="darwin"; $env:GOARCH="arm64"
+go build -C cmd/smtptool -ldflags="-s -w" -o smtptool
+Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
+```
+
+## Project Structure
+
+The repository now uses a modular structure:
+
+```
+msgraphgolangtestingtool/
+├── cmd/
+│   ├── msgraphtool/     # Microsoft Graph tool source
+│   └── smtptool/        # SMTP tool source
+├── internal/
+│   ├── common/          # Shared packages (logger, retry, version, validation)
+│   ├── msgraph/         # Graph-specific code
+│   └── smtp/            # SMTP-specific code (protocol, TLS, Exchange)
+├── src/
+│   └── VERSION          # Version file (embedded at build time)
+├── build-all.ps1        # Build script for both tools
+└── go.mod               # Root module
+```
+
+## Legacy Build (Deprecated)
+
+The old build method is deprecated but still works temporarily:
+
+```powershell
+# DEPRECATED - Do not use for new builds
 go build -C src -o msgraphgolangtestingtool.exe
 ```
 
-### 2. Optimized Build (Smaller Binary)
-Strips debug information and symbol tables.
+**Migration:** Update your build scripts to use `go build -C cmd/msgraphtool` instead.
+
+## Verification
+
+After building, verify the executables:
 
 ```powershell
-go build -C src -ldflags="-s -w" -o msgraphgolangtestingtool.exe
-```
+# Check versions
+.\msgraphgolangtestingtool.exe -version
+.\smtptool.exe -version
 
-### 3. Cross-Platform Builds
-
-**Linux:**
-```powershell
-$env:GOOS="linux"; $env:GOARCH="amd64"
-go build -C src -o msgraphgolangtestingtool
-Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
-```
-*Note: Windows Certificate Store auth (`-thumbprint`) is not available on Linux.*
-
-**macOS:**
-```powershell
-$env:GOOS="darwin"; $env:GOARCH="amd64"
-go build -C src -o msgraphgolangtestingtool
-Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
+# Both should display the same version from src/VERSION
 ```
 
 ## Release Process
 
-> **Moved:** The complete release and versioning guide is now located in **[RELEASE.md](RELEASE.md)**.
+> **Complete Guide:** See **[RELEASE.md](RELEASE.md)** for the full release and versioning policy.
 
-To cut a new release, use the automated script:
+To create a new release:
+
 ```powershell
 .\run-integration-tests.ps1
 ```
 
+This script:
+1. Runs integration tests
+2. Prompts for version bump
+3. Updates VERSION file and changelog
+4. Creates git tag
+5. Builds both tools
+
 ## Troubleshooting
 
-- **"go: command not found"**: Ensure Go is in your PATH.
-- **"package X is not in GOROOT"**: Run `go mod download` inside `src/`.
-- **"Access Denied"**: Close any running instances of the tool.
+### Common Issues
+
+**"go: command not found"**
+- Ensure Go is installed and in your PATH
+- Run `go version` to verify
+
+**"package X is not in GOROOT"**
+- Run `go mod download` from project root
+- Ensure you're using Go 1.24 or later
+
+**"Access Denied" on Windows**
+- Close any running instances of the tools
+- Build to a different filename temporarily
+
+**Build fails with import errors**
+- Ensure you're building from project root
+- Check that `internal/` packages exist
+- Run `go mod tidy` to clean up dependencies
+
+### Module Cache Issues
+
+If you encounter module resolution issues:
+
+```powershell
+# Clean module cache
+go clean -modcache
+
+# Re-download dependencies
+go mod download
+```
 
 ## Development
 
-Run directly without building:
+### Run Without Building
+
 ```powershell
-cd src
-go run . -action getinbox ...
+# Microsoft Graph Tool
+cd cmd/msgraphtool
+go run . -action getinbox -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com"
+
+# SMTP Tool
+cd cmd/smtptool
+go run . -action testconnect -host smtp.example.com -port 25
 ```
 
+### Run Tests
+
+```powershell
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run tests in a specific package
+go test ./internal/smtp/protocol/
+```
+
+### Code Linting
+
+```powershell
+# Install golangci-lint
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Run linter
+golangci-lint run
+```
+
+## Build Flags Explained
+
+- `-C <dir>`: Change to directory before building
+- `-o <file>`: Output executable name
+- `-ldflags="-s -w"`: Strip debug info and symbol table (reduces binary size by ~30%)
+- `-v`: Verbose build output
+- `-race`: Enable race detector (development only, increases binary size)
+
+## Binary Sizes
+
+Typical optimized build sizes (Windows):
+- **msgraphgolangtestingtool.exe**: ~15-20 MB (includes Graph SDK)
+- **smtptool.exe**: ~8-10 MB (stdlib only, no external dependencies)
+
+## Additional Resources
+
+- **Usage Examples**: See [EXAMPLES.md](EXAMPLES.md) for Graph tool examples
+- **SMTP Tool Guide**: See [SMTP_TOOL_README.md](SMTP_TOOL_README.md) for SMTP tool documentation
+- **Security**: See [SECURITY.md](SECURITY.md) for security best practices
+- **Project Overview**: See [CLAUDE.md](CLAUDE.md) for complete project documentation
+
                           ..ooOO END OOoo..
-
-

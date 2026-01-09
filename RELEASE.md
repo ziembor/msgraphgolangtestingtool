@@ -12,10 +12,10 @@ The version is stored in **one place only**:
 The Go source code automatically reads this file at compile time using the `//go:embed` directive. You **do not** need to update any Go source files manually.
 
 ### Version Numbering
-- **Major Version Locked:** The major version is locked at **1**.
-- **Format:** `1.x.y` (Semantic Versioning)
-  - `x` (Minor): New features, significant changes (including breaking changes).
-  - `y` (Patch): Bug fixes, documentation updates.
+- **Format:** `x.y.z` (Semantic Versioning)
+  - `x` (Major): Breaking changes, major architectural shifts, new tools/executables.
+  - `y` (Minor): New features, significant enhancements.
+  - `z` (Patch): Bug fixes, documentation updates.
 
 ### Changelog Format
 Changelogs are stored as individual files in the `Changelog/` directory:
@@ -44,15 +44,15 @@ The `run-integration-tests.ps1` script is the standard way to perform releases. 
 If you cannot use the automation script, follow these steps to release manually.
 
 ### Step 1: Update Version
-Update the version file with the new number (e.g., `1.16.2`).
+Update the version file with the new number (e.g., `2.1.0`).
 ```powershell
-echo "1.16.2" | Out-File -NoNewline -Encoding utf8 src/VERSION
+echo "2.1.0" | Out-File -NoNewline -Encoding utf8 src/VERSION
 ```
 
 ### Step 2: Create Changelog
-Create a new file `Changelog/1.16.2.md`:
+Create a new file `Changelog/2.1.0.md`:
 ```markdown
-## [1.16.2] - 2026-01-05
+## [2.1.0] - 2026-01-05
 
 ### Added
 - New feature X
@@ -63,28 +63,30 @@ Create a new file `Changelog/1.16.2.md`:
 
 ### Step 3: Verify Build (Optional)
 ```powershell
-go build -C src -o msgraphgolangtestingtool.exe
+.\build-all.ps1
 .\msgraphgolangtestingtool.exe -version
-# Should output: ... Version 1.16.2
+# Should output: ... Version 2.1.0
+.\smtptool.exe -version
+# Should output: ... Version 2.1.0
 ```
 
 ### Step 4: Commit Changes
 ```powershell
-git add src/VERSION Changelog/1.16.2.md
-git commit -m "Release v1.16.2"
+git add src/VERSION Changelog/2.1.0.md
+git commit -m "Release v2.1.0"
 git push origin main
 ```
 
 ### Step 5: Create and Push Tag
 **This is the trigger for the automated build pipeline.**
 ```powershell
-git tag v1.16.2
-git push origin v1.16.2
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 ## 4. GitHub Actions Workflow
 
-When a tag matching `v*` is pushed (e.g., `v1.16.2`), the `.github/workflows/build.yml` workflow triggers automatically.
+When a tag matching `v*` is pushed (e.g., `v2.1.0`), the `.github/workflows/build.yml` workflow triggers automatically.
 
 **The Workflow:**
 1. **Builds** the application for Windows, Linux, and macOS.
@@ -127,7 +129,7 @@ To perform a release:
 1. **Prefer `.\run-integration-tests.ps1`** if interactive mode is possible.
 2. **If manual:**
    - Read `src/VERSION`.
-   - Increment to `1.x.y`.
+   - Increment according to Semantic Versioning (major.minor.patch).
    - Update `src/VERSION`.
    - Write `Changelog/{version}.md`.
    - Commit & Tag.
