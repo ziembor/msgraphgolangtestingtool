@@ -3,8 +3,10 @@ package logger
 import (
 	"encoding/csv"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -35,10 +37,17 @@ func NewCSVLogger(toolName, action string) (*CSVLogger, error) {
 	fileName := fmt.Sprintf("_%s_%s_%s.csv", toolName, action, dateStr)
 	filePath := filepath.Join(tempDir, fileName)
 
-	// Open or create file (append mode)
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Open or create file (append mode) with restrictive permissions (0600)
+	// This ensures only the owner can read/write the file, protecting sensitive data
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("could not create CSV log file: %w", err)
+	}
+
+	// Apply platform-specific restrictive permissions for additional security
+	if err := setRestrictivePermissions(file, filePath); err != nil {
+		// Log warning but continue - file creation succeeded
+		log.Printf("Warning: Failed to set restrictive permissions on log file %s: %v", filePath, err)
 	}
 
 	logger := &CSVLogger{
@@ -121,4 +130,44 @@ func (l *CSVLogger) ShouldWriteHeader() (bool, error) {
 		return false, fmt.Errorf("could not stat CSV file: %w", err)
 	}
 	return fileInfo.Size() == 0, nil
+}
+
+// setRestrictivePermissions sets platform-specific restrictive permissions on the CSV log file.
+// On Unix/Linux/macOS: Sets permissions to 0600 (owner read/write only)
+// On Windows: Attempts to set ACLs to restrict access to current user only
+//
+// This function provides defense-in-depth security to protect sensitive data that may
+// appear in logs (e.g., error messages containing credentials). It's called after file
+// creation to ensure restrictive permissions regardless of the system's umask.
+//
+// Returns an error if permission setting fails, but file creation has already succeeded.
+func setRestrictivePermissions(file *os.File, filePath string) error {
+	if runtime.GOOS == "windows" {
+		// On Windows, file permissions are handled through ACLs (Access Control Lists).
+		// Setting proper ACLs requires using Windows-specific APIs, which is complex
+		// and requires the golang.org/x/sys/windows package.
+		//
+		// For now, we rely on the file being created in %TEMP% which typically has
+		// appropriate user-specific permissions on Windows systems.
+		//
+		// Note: OpenFile with 0600 on Windows still creates the file, but Windows
+		// uses inherited ACLs from the parent directory rather than Unix-style permissions.
+		//
+		// Future enhancement: Implement proper Windows ACL setting using:
+		// - golang.org/x/sys/windows package
+		// - SetNamedSecurityInfo or similar Windows APIs
+		// - Create a DACL that grants access only to current user
+
+		// No error - Windows relies on directory ACLs
+		return nil
+	}
+
+	// Unix/Linux/macOS: Set file permissions to 0600 (owner read/write only)
+	// This ensures that even if the file was created with a permissive umask,
+	// we explicitly restrict access to the owner only.
+	if err := file.Chmod(0600); err != nil {
+		return fmt.Errorf("failed to chmod file to 0600: %w", err)
+	}
+
+	return nil
 }

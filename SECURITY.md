@@ -399,6 +399,38 @@ C:\Users\Admin\AppData\Local\Temp\_msgraphgolangtestingtool_sendmail_2026-01-04.
 C:\Users\Admin\AppData\Local\Temp\_msgraphgolangtestingtool_getevents_2026-01-04.csv
 ```
 
+**Log File Permissions (v2.1.0+):**
+
+To protect sensitive data that may appear in logs, CSV files are created with restrictive permissions:
+
+- **Unix/Linux/macOS:** Files are created with permissions `0600` (owner read/write only)
+  - Only the user who ran the tool can access the log files
+  - Other users on the system cannot read the logs
+  - Provides defense-in-depth protection for sensitive data in error messages
+
+- **Windows:** Files inherit ACLs from the `%TEMP%` directory
+  - Typically restricted to the current user by Windows default temp directory ACLs
+  - Future enhancement: Explicit Windows ACL setting for additional security
+  - Recommendation: Verify temp directory permissions in multi-user environments
+
+**File Permission Verification:**
+```powershell
+# Unix/Linux/macOS - Verify file permissions
+ls -l $TMPDIR/_msgraphgolangtestingtool_*.csv
+# Should show: -rw------- (600 permissions)
+
+# Windows - Verify file ACLs
+$logFile = "$env:TEMP\_msgraphgolangtestingtool_sendmail_2026-01-09.csv"
+Get-Acl $logFile | Format-List
+# Verify only current user has access
+```
+
+**Security Note:**
+If logs contain sensitive data and you're in a multi-user environment, consider:
+- Moving logs to a more secure location with explicit ACLs
+- Encrypting logs containing credentials or sensitive subjects
+- Implementing automated log sanitization before archiving
+
 **Log Retention Best Practices:**
 ```powershell
 # Review logs periodically for unauthorized usage

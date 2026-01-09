@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -110,10 +111,18 @@ func NewCSVLogger(action string) (*CSVLogger, error) {
 	fileName := fmt.Sprintf("_msgraphgolangtestingtool_%s_%s.csv", action, dateStr)
 	filePath := filepath.Join(tempDir, fileName)
 
-	// Open or create file (append mode)
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Open or create file (append mode) with restrictive permissions (0600)
+	// This ensures only the owner can read/write the file, protecting sensitive data
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("could not create CSV log file: %w", err)
+	}
+
+	// Apply platform-specific restrictive permissions for additional security
+	if runtime.GOOS != "windows" {
+		if err := file.Chmod(0600); err != nil {
+			log.Printf("Warning: Failed to set restrictive permissions on log file %s: %v", filePath, err)
+		}
 	}
 
 	logger := &CSVLogger{
