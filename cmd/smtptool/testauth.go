@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -61,7 +62,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger *logger.CSVLogger, 
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			config.Username, "none", "", "FAILURE", msg,
 		})
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	fmt.Printf("✓ Server supports AUTH mechanisms: %s\n\n", strings.Join(authMechanisms, ", "))
@@ -85,7 +86,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger *logger.CSVLogger, 
 			return fmt.Errorf("STARTTLS failed: %w", err)
 		}
 
-		fmt.Println("✓ TLS upgrade successful\n")
+		fmt.Println("✓ TLS upgrade successful")
 
 		// Re-run EHLO on encrypted connection
 		caps, err = client.EHLO("smtptool.local")
@@ -112,7 +113,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger *logger.CSVLogger, 
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			config.Username, strings.Join(authMechanisms, ", "), "", "FAILURE", msg,
 		})
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	fmt.Printf("Attempting authentication with method: %s\n", methodUsed)

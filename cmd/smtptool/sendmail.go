@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -96,7 +97,7 @@ func sendMail(ctx context.Context, config *Config, csvLogger *logger.CSVLogger, 
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				config.From, strings.Join(config.To, ", "), config.Subject, "", "", msg,
 			})
-			return fmt.Errorf(msg)
+			return errors.New(msg)
 		}
 
 		if err := client.Auth(config.Username, config.Password, []string{methodToUse}); err != nil {

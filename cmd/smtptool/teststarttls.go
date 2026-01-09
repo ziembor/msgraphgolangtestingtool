@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -63,7 +64,7 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger *logger.CSVLogg
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"false", "", "", "", "", "", "", "", "", "", msg,
 		})
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	fmt.Printf("✓ STARTTLS capability available\n\n")
