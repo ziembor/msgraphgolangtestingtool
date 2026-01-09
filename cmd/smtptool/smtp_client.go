@@ -50,8 +50,8 @@ func (c *SMTPClient) Connect(ctx context.Context) error {
 	c.conn = conn
 	c.reader = bufio.NewReader(conn)
 
-	// Read banner (220 response)
-	resp, err := protocol.ReadResponse(c.reader)
+	// Read banner (220 response) with timeout
+	resp, err := protocol.ReadResponseWithTimeout(c.reader, protocol.DefaultResponseTimeout)
 	if err != nil {
 		c.conn.Close()
 		return fmt.Errorf("failed to read banner: %w", err)
@@ -75,8 +75,8 @@ func (c *SMTPClient) EHLO(hostname string) (protocol.Capabilities, error) {
 		return nil, fmt.Errorf("failed to send EHLO: %w", err)
 	}
 
-	// Read response
-	resp, err := protocol.ReadResponse(c.reader)
+	// Read response with timeout
+	resp, err := protocol.ReadResponseWithTimeout(c.reader, protocol.DefaultResponseTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read EHLO response: %w", err)
 	}
@@ -99,8 +99,8 @@ func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, erro
 		return nil, fmt.Errorf("failed to send STARTTLS: %w", err)
 	}
 
-	// Read response (expect 220)
-	resp, err := protocol.ReadResponse(c.reader)
+	// Read response (expect 220) with timeout
+	resp, err := protocol.ReadResponseWithTimeout(c.reader, protocol.DefaultResponseTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read STARTTLS response: %w", err)
 	}

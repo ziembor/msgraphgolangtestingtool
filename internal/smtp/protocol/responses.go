@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// DefaultResponseTimeout is the default timeout for reading SMTP responses.
+// This prevents indefinite hangs when communicating with misbehaving servers.
+const DefaultResponseTimeout = 30 * time.Second
 
 // SMTPResponse represents a parsed SMTP server response.
 // SMTP responses consist of a 3-digit code and optional message text.
@@ -80,6 +85,41 @@ func ReadResponse(reader *bufio.Reader) (*SMTPResponse, error) {
 		Message: strings.Join(lines, "\n"),
 		Lines:   lines,
 	}, nil
+}
+
+// ReadResponseWithTimeout reads and parses an SMTP response with a timeout.
+// This prevents indefinite hangs when communicating with misbehaving SMTP servers.
+//
+// The timeout parameter specifies the maximum time to wait for a complete response.
+// If the timeout is exceeded, an error is returned.
+//
+// Example usage:
+//
+//	resp, err := protocol.ReadResponseWithTimeout(reader, 30*time.Second)
+//	if err != nil {
+//	    // Handle timeout or read error
+//	}
+func ReadResponseWithTimeout(reader *bufio.Reader, timeout time.Duration) (*SMTPResponse, error) {
+	type result struct {
+		resp *SMTPResponse
+		err  error
+	}
+
+	resultCh := make(chan result, 1)
+
+	// Read response in goroutine
+	go func() {
+		resp, err := ReadResponse(reader)
+		resultCh <- result{resp, err}
+	}()
+
+	// Wait for response or timeout
+	select {
+	case r := <-resultCh:
+		return r.resp, r.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for SMTP response after %v", timeout)
+	}
 }
 
 // IsSuccess checks if the response code indicates success (2xx).
