@@ -693,6 +693,176 @@ $env:SMTPRATELIMIT = "10"
   -from user@example.com -to recipient@example.com
 ```
 
+## Integration Testing with Mailpit
+
+For local SMTP testing and development, we recommend using **Mailpit** - a lightweight SMTP server with a web UI for email inspection.
+
+**Mailpit Resources:**
+- Docker Hub: [https://hub.docker.com/r/axllent/mailpit](https://hub.docker.com/r/axllent/mailpit)
+- GitHub: [https://github.com/axllent/mailpit](https://github.com/axllent/mailpit)
+
+### Quick Start with Mailpit
+
+**Run Mailpit with Docker:**
+```bash
+# Start Mailpit container
+docker run -d \
+  --name mailpit \
+  -p 1025:1025 \
+  -p 8025:8025 \
+  axllent/mailpit
+
+# Mailpit SMTP server: localhost:1025
+# Mailpit Web UI: http://localhost:8025
+```
+
+**Test with smtptool:**
+```powershell
+# Test connectivity
+.\smtptool.exe -action testconnect -host localhost -port 1025
+
+# Test STARTTLS (Mailpit supports opportunistic TLS)
+.\smtptool.exe -action teststarttls -host localhost -port 1025 -skipverify
+
+# Test authentication (Mailpit accepts any credentials)
+.\smtptool.exe -action testauth -host localhost -port 1025 \
+  -username testuser -password testpass
+
+# Send test email
+.\smtptool.exe -action sendmail -host localhost -port 1025 \
+  -from sender@test.local -to recipient@test.local \
+  -subject "Test Email via Mailpit" \
+  -body "This is a test message sent through Mailpit"
+```
+
+**View emails:**
+Open [http://localhost:8025](http://localhost:8025) in your browser to see all captured emails.
+
+### Advanced Mailpit Configuration
+
+**With TLS and authentication:**
+```bash
+# Create self-signed certificate for testing
+docker run -d \
+  --name mailpit \
+  -p 1025:1025 \
+  -p 8025:8025 \
+  -e MP_SMTP_AUTH_ACCEPT_ANY=1 \
+  -e MP_SMTP_AUTH_ALLOW_INSECURE=1 \
+  axllent/mailpit
+```
+
+**Docker Compose example:**
+```yaml
+version: '3.8'
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    restart: unless-stopped
+```
+
+### Integration Testing Workflow
+
+**1. Start Mailpit:**
+```bash
+docker-compose up -d mailpit
+```
+
+**2. Run smtptool tests:**
+```powershell
+# Test complete SMTP pipeline
+.\smtptool.exe -action testconnect -host localhost -port 1025
+.\smtptool.exe -action testauth -host localhost -port 1025 -username test -password test
+.\smtptool.exe -action sendmail -host localhost -port 1025 \
+  -from app@example.local -to admin@example.local \
+  -subject "Integration Test" -body "Testing SMTP functionality"
+```
+
+**3. Verify in Web UI:**
+- Open http://localhost:8025
+- Check that email was received
+- Inspect headers, body, and attachments
+
+**4. Test with verbose mode:**
+```powershell
+.\smtptool.exe -action sendmail -host localhost -port 1025 -verbose \
+  -from sender@test.local -to recipient@test.local \
+  -subject "Debug Test" -body "Testing with protocol visibility"
+```
+
+The verbose mode will show complete SMTP protocol conversation:
+```
+>>> EHLO smtptool.local
+<<< 250-mailpit.example
+<<< 250-AUTH PLAIN LOGIN
+<<< 250-STARTTLS
+<<< 250 8BITMIME
+
+>>> MAIL FROM:<sender@test.local>
+<<< 250 Sender OK
+>>> RCPT TO:<recipient@test.local>
+<<< 250 Recipient OK
+>>> DATA
+<<< 354 Start mail input
+```
+
+### Benefits of Mailpit for Testing
+
+✅ **No External Dependencies**: Self-contained Docker container
+✅ **Email Inspection**: Web UI to view all captured emails
+✅ **No Real Email Sending**: Safe for development/testing
+✅ **Full SMTP Protocol Support**: STARTTLS, AUTH, 8BITMIME
+✅ **Accepts Any Credentials**: No authentication setup needed
+✅ **Lightweight**: Minimal resource usage
+✅ **API Access**: REST API for programmatic email verification
+✅ **Cross-Platform**: Works on Windows, Linux, macOS
+
+### Automated Integration Tests
+
+**PowerShell test script:**
+```powershell
+# integration-test.ps1
+$mailpitHost = "localhost"
+$mailpitPort = 1025
+
+# Start Mailpit if not running
+docker ps | Select-String "mailpit" -Quiet
+if (-not $?) {
+    Write-Host "Starting Mailpit..." -ForegroundColor Cyan
+    docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+    Start-Sleep -Seconds 3
+}
+
+# Run tests
+Write-Host "Running SMTP integration tests..." -ForegroundColor Cyan
+
+Write-Host "`n1. Testing connectivity..." -ForegroundColor Yellow
+& .\smtptool.exe -action testconnect -host $mailpitHost -port $mailpitPort
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
+Write-Host "`n2. Testing authentication..." -ForegroundColor Yellow
+& .\smtptool.exe -action testauth -host $mailpitHost -port $mailpitPort `
+    -username test -password test
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
+Write-Host "`n3. Sending test email..." -ForegroundColor Yellow
+& .\smtptool.exe -action sendmail -host $mailpitHost -port $mailpitPort `
+    -from integration-test@local -to testrecipient@local `
+    -subject "Integration Test $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" `
+    -body "Automated integration test"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+
+Write-Host "`n✓ All integration tests passed!" -ForegroundColor Green
+Write-Host "View emails at: http://localhost:8025" -ForegroundColor Cyan
+```
+
 ## Related Documentation
 
 - **Build Instructions**: [BUILD.md](BUILD.md)
