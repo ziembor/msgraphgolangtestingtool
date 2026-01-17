@@ -189,6 +189,25 @@ func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, erro
 	return &state, nil
 }
 
+// connWrapper wraps our existing buffered reader and connection into an io.ReadWriteCloser
+// This allows us to reuse the existing buffer while creating a proper textproto.Conn
+type connWrapper struct {
+	reader *bufio.Reader
+	conn   net.Conn
+}
+
+func (cw *connWrapper) Read(p []byte) (n int, err error) {
+	return cw.reader.Read(p)
+}
+
+func (cw *connWrapper) Write(p []byte) (n int, err error) {
+	return cw.conn.Write(p)
+}
+
+func (cw *connWrapper) Close() error {
+	return nil // Don't close the underlying connection, we'll manage it ourselves
+}
+
 // Auth performs SMTP authentication.
 func (c *SMTPClient) Auth(username, password string, mechanisms []string) error {
 	// Apply rate limiting
@@ -217,14 +236,17 @@ func (c *SMTPClient) Auth(username, password string, mechanisms []string) error 
 		return fmt.Errorf("unsupported authentication mechanism: %s", mechanism)
 	}
 
-	// Create textproto.Conn using our existing reader to avoid buffering conflicts
-	textConn := &textproto.Conn{
-		Reader: *textproto.NewReader(c.reader),
-		Writer: *textproto.NewWriter(bufio.NewWriter(c.conn)),
+	// Create a wrapper that implements io.ReadWriteCloser using our existing reader
+	// This prevents creating a new buffered reader and causing desynchronization
+	wrapper := &connWrapper{
+		reader: c.reader,
+		conn:   c.conn,
 	}
 
+	// Create textproto.Conn properly using textproto.NewConn
+	textConn := textproto.NewConn(wrapper)
+
 	// Create SMTP client with proper initialization
-	// We need to set up the client as if EHLO was already done
 	c.debugLogMessage(fmt.Sprintf(">>> AUTH %s (credentials exchanged via SASL)", mechanism))
 	smtpClient := &smtp.Client{Text: textConn}
 
@@ -252,11 +274,14 @@ func (c *SMTPClient) SendMail(from string, to []string, data []byte) error {
 		return fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
-	// Create textproto.Conn using our existing reader to avoid buffering conflicts
-	textConn := &textproto.Conn{
-		Reader: *textproto.NewReader(c.reader),
-		Writer: *textproto.NewWriter(bufio.NewWriter(c.conn)),
+	// Create a wrapper that implements io.ReadWriteCloser using our existing reader
+	wrapper := &connWrapper{
+		reader: c.reader,
+		conn:   c.conn,
 	}
+
+	// Create textproto.Conn properly using textproto.NewConn
+	textConn := textproto.NewConn(wrapper)
 	smtpClient := &smtp.Client{Text: textConn}
 
 	// MAIL FROM
