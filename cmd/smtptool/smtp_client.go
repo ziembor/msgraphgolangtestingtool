@@ -227,7 +227,10 @@ func (c *SMTPClient) Auth(username, password string, mechanisms []string) error 
 	var auth smtp.Auth
 	switch mechanism {
 	case "PLAIN":
-		auth = smtp.PlainAuth("", username, password, c.host)
+		// Use our custom plainAuth instead of smtp.PlainAuth because
+		// we manage TLS ourselves and smtp.PlainAuth would reject the
+		// connection thinking it's unencrypted
+		auth = &plainAuth{username, password}
 	case "LOGIN":
 		auth = &loginAuth{username, password}
 	case "CRAM-MD5":
@@ -387,6 +390,25 @@ func selectAuthMechanism(requested []string, available []string) string {
 	}
 
 	return ""
+}
+
+// plainAuth implements PLAIN authentication without TLS requirement checks.
+// We use this instead of smtp.PlainAuth because we manage TLS ourselves
+// and the stdlib smtp.Client doesn't know we've already upgraded the connection.
+type plainAuth struct {
+	username string
+	password string
+}
+
+func (a *plainAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	// PLAIN auth sends: \0username\0password
+	resp := []byte("\x00" + a.username + "\x00" + a.password)
+	return "PLAIN", resp, nil
+}
+
+func (a *plainAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	// PLAIN is a single-step authentication, no further responses needed
+	return nil, nil
 }
 
 // loginAuth implements LOGIN authentication.
