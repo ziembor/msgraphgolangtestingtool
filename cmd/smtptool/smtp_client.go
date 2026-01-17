@@ -24,6 +24,7 @@ type SMTPClient struct {
 	banner       string
 	capabilities protocol.Capabilities
 	limiter      *ratelimit.Limiter
+	smtpClient   *smtp.Client // Reusable stdlib client after STARTTLS
 }
 
 // debugLogCommand logs an SMTP command being sent to the server.
@@ -183,6 +184,14 @@ func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, erro
 	c.conn = tlsConn
 	c.reader = bufio.NewReader(tlsConn)
 
+	// Create a reusable stdlib smtp.Client for Auth and SendMail
+	// We do this here to avoid creating multiple clients with conflicting buffered readers
+	wrapper := &connWrapper{
+		reader: c.reader,
+		conn:   c.conn,
+	}
+	c.smtpClient = &smtp.Client{Text: textproto.NewConn(wrapper)}
+
 	// Get connection state
 	state := tlsConn.ConnectionState()
 
@@ -239,28 +248,26 @@ func (c *SMTPClient) Auth(username, password string, mechanisms []string) error 
 		return fmt.Errorf("unsupported authentication mechanism: %s", mechanism)
 	}
 
-	// Create a wrapper that implements io.ReadWriteCloser using our existing reader
-	// This prevents creating a new buffered reader and causing desynchronization
-	wrapper := &connWrapper{
-		reader: c.reader,
-		conn:   c.conn,
+	// Use the reusable smtp.Client created after STARTTLS
+	// If not available (no STARTTLS), create one now
+	if c.smtpClient == nil {
+		wrapper := &connWrapper{
+			reader: c.reader,
+			conn:   c.conn,
+		}
+		c.smtpClient = &smtp.Client{Text: textproto.NewConn(wrapper)}
 	}
 
-	// Create textproto.Conn properly using textproto.NewConn
-	textConn := textproto.NewConn(wrapper)
-
-	// Create SMTP client with proper initialization
 	c.debugLogMessage(fmt.Sprintf(">>> AUTH %s (credentials exchanged via SASL)", mechanism))
-	smtpClient := &smtp.Client{Text: textConn}
 
 	// Call Hello to initialize the client state properly
 	// This sends EHLO again, which is required by smtp.Client.Auth()
-	if err := smtpClient.Hello(c.host); err != nil {
+	if err := c.smtpClient.Hello(c.host); err != nil {
 		c.debugLogMessage("<<< EHLO for auth failed")
 		return fmt.Errorf("EHLO for auth failed: %w", err)
 	}
 
-	if err := smtpClient.Auth(auth); err != nil {
+	if err := c.smtpClient.Auth(auth); err != nil {
 		c.debugLogMessage("<<< Authentication failed")
 		return fmt.Errorf("authentication failed: %w", err)
 	}
@@ -277,15 +284,16 @@ func (c *SMTPClient) SendMail(from string, to []string, data []byte) error {
 		return fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
-	// Create a wrapper that implements io.ReadWriteCloser using our existing reader
-	wrapper := &connWrapper{
-		reader: c.reader,
-		conn:   c.conn,
+	// Use the reusable smtp.Client created after STARTTLS (or Auth)
+	// If not available, create one now
+	if c.smtpClient == nil {
+		wrapper := &connWrapper{
+			reader: c.reader,
+			conn:   c.conn,
+		}
+		c.smtpClient = &smtp.Client{Text: textproto.NewConn(wrapper)}
 	}
-
-	// Create textproto.Conn properly using textproto.NewConn
-	textConn := textproto.NewConn(wrapper)
-	smtpClient := &smtp.Client{Text: textConn}
+	smtpClient := c.smtpClient
 
 	// MAIL FROM
 	c.debugLogMessage(fmt.Sprintf(">>> MAIL FROM:<%s>", from))
