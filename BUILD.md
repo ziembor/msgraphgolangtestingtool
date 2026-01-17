@@ -91,8 +91,7 @@ msgraphgolangtestingtool/
 │   ├── common/          # Shared packages (logger, retry, version, validation)
 │   ├── msgraph/         # Graph-specific code
 │   └── smtp/            # SMTP-specific code (protocol, TLS, Exchange)
-├── src/
-│   └── VERSION          # Version file (embedded at build time)
+├── src/                 # Legacy code (deprecated build method)
 ├── build-all.ps1        # Build script for both tools
 └── go.mod               # Root module
 ```
@@ -117,7 +116,7 @@ After building, verify the executables:
 .\msgraphgolangtestingtool.exe -version
 .\smtptool.exe -version
 
-# Both should display the same version from src/VERSION
+# Both should display the same version from internal/common/version/version.go
 ```
 
 ## Release Process
