@@ -13,23 +13,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest] # ubuntu-latest, macos-latest disabled for v2.1.1
+        os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
             graph_binary: msgraphgolangtestingtool.exe
             smtp_binary: smtptool.exe
             artifact_name: msgraphgolangtestingtool-windows
             zip_name: msgraphgolangtestingtool-windows.zip
-          # - os: ubuntu-latest
-          #   graph_binary: msgraphgolangtestingtool
-          #   smtp_binary: smtptool
-          #   artifact_name: msgraphgolangtestingtool-linux
-          #   zip_name: msgraphgolangtestingtool-linux.zip
-          # - os: macos-latest
-          #   graph_binary: msgraphgolangtestingtool
-          #   smtp_binary: smtptool
-          #   artifact_name: msgraphgolangtestingtool-macos
-          #   zip_name: msgraphgolangtestingtool-macos.zip
+          - os: ubuntu-latest
+            graph_binary: msgraphgolangtestingtool
+            smtp_binary: smtptool
+            artifact_name: msgraphgolangtestingtool-linux
+            zip_name: msgraphgolangtestingtool-linux.zip
+          - os: macos-latest
+            graph_binary: msgraphgolangtestingtool
+            smtp_binary: smtptool
+            artifact_name: msgraphgolangtestingtool-macos
+            zip_name: msgraphgolangtestingtool-macos.zip
 
     steps:
     - uses: actions/checkout@v4
