@@ -76,6 +76,41 @@ See [EXAMPLES.md](EXAMPLES.md) for comprehensive scenarios.
 ```
 See [SMTP_TOOL_README.md](SMTP_TOOL_README.md) for complete documentation.
 
+### SMTPS vs STARTTLS
+
+When connecting to SMTP servers with encryption, there are two distinct methods:
+
+| Method | Port | Description |
+|--------|------|-------------|
+| **SMTPS** | 465 | Implicit TLS - encryption starts immediately upon connection |
+| **STARTTLS** | 587 (or 25) | Explicit TLS - plain connection upgrades to TLS after STARTTLS command |
+
+**When to use SMTPS (`-smtps` flag):**
+- Port 465 connections (Gmail, many hosting providers)
+- When the server expects immediate TLS handshake
+- Legacy "SSL" SMTP configurations
+
+**When to use STARTTLS (`-starttls` flag or default):**
+- Port 587 connections (standard submission port)
+- Port 25 connections with opportunistic encryption
+- Microsoft 365 / Exchange Online
+
+**Common Provider Configurations:**
+
+| Provider | SMTPS (Port 465) | STARTTLS (Port 587) |
+|----------|------------------|---------------------|
+| Gmail | `smtp.gmail.com -smtps` | `smtp.gmail.com -port 587` |
+| Microsoft 365 | Not supported | `smtp.office365.com -port 587` |
+| Yahoo | `smtp.mail.yahoo.com -smtps` | `smtp.mail.yahoo.com -port 587` |
+
+```bash
+# Gmail with SMTPS (implicit TLS)
+smtptool -action testauth -host smtp.gmail.com -smtps -username user@gmail.com -password "app-password"
+
+# Microsoft 365 with STARTTLS (explicit TLS)
+smtptool -action testauth -host smtp.office365.com -port 587 -username user@company.com -password "password"
+```
+
 ### Environment Variables
 - **Microsoft Graph Tool**: `MSGRAPH` prefix (e.g., `MSGRAPHTENANTID`, `MSGRAPHSECRET`)
 - **SMTP Tool**: `SMTP` prefix (e.g., `SMTPHOST`, `SMTPPORT`, `SMTPUSERNAME`)

@@ -306,3 +306,44 @@ func TestValidateConfiguration_Actions(t *testing.T) {
 		}
 	})
 }
+
+// TestParseBoolEnv tests boolean environment variable parsing
+func TestParseBoolEnv(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		// Truthy values
+		{"true lowercase", "true", true},
+		{"true uppercase", "TRUE", true},
+		{"true mixed case", "True", true},
+		{"1", "1", true},
+		{"yes lowercase", "yes", true},
+		{"yes uppercase", "YES", true},
+		{"yes mixed case", "Yes", true},
+		{"on lowercase", "on", true},
+		{"on uppercase", "ON", true},
+		{"on mixed case", "On", true},
+
+		// Falsy values
+		{"false lowercase", "false", false},
+		{"false uppercase", "FALSE", false},
+		{"0", "0", false},
+		{"no", "no", false},
+		{"off", "off", false},
+		{"empty string", "", false},
+		{"random string", "random", false},
+		{"whitespace", "  ", false},
+		{"true with spaces", " true ", false}, // strict matching, no trim
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseBoolEnv(tt.input)
+			if result != tt.expected {
+				t.Errorf("parseBoolEnv(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

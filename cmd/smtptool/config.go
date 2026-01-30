@@ -178,6 +178,18 @@ func parseAndConfigureFlags() *Config {
 	return config
 }
 
+// parseBoolEnv parses a boolean environment variable.
+// Accepts truthy values: "true", "1", "yes", "on" (case-insensitive)
+// Returns false for empty string or any other value.
+func parseBoolEnv(value string) bool {
+	switch strings.ToLower(value) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 // applyEnvironmentVariables applies environment variables to config.
 func applyEnvironmentVariables(config *Config) {
 	if config.Action == "" {
@@ -212,9 +224,13 @@ func applyEnvironmentVariables(config *Config) {
 		}
 	}
 	if !config.SMTPS {
-		if smtpsStr := os.Getenv("SMTPSMTPS"); smtpsStr != "" {
-			config.SMTPS = smtpsStr == "true" || smtpsStr == "1"
-		}
+		config.SMTPS = parseBoolEnv(os.Getenv("SMTPSMTPS"))
+	}
+	if !config.StartTLS {
+		config.StartTLS = parseBoolEnv(os.Getenv("SMTPSTARTTLS"))
+	}
+	if !config.SkipVerify {
+		config.SkipVerify = parseBoolEnv(os.Getenv("SMTPSKIPVERIFY"))
 	}
 }
 
