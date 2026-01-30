@@ -129,6 +129,7 @@ func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 				"error", err,
 				"username", maskUsername(config.Username),
 				"password", maskPassword(config.Password),
+				"accesstoken", maskAccessToken(config.AccessToken),
 				"method", methodToUse)
 
 			// Show TLS cipher information on auth failure if verbose and TLS was used

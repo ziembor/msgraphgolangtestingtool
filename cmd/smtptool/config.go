@@ -288,9 +288,15 @@ func validateConfiguration(config *Config) error {
 			if config.AccessToken == "" {
 				return fmt.Errorf("XOAUTH2 authentication requires -accesstoken")
 			}
+			if config.Password != "" {
+				fmt.Println("Warning: both -password and -accesstoken provided; -password will be ignored for XOAUTH2")
+			}
 		} else if config.AccessToken != "" {
 			// If accesstoken provided, assume XOAUTH2
 			// No password required
+			if config.Password != "" {
+				fmt.Println("Warning: both -password and -accesstoken provided; -password will be ignored (using XOAUTH2)")
+			}
 		} else if config.Password == "" {
 			return fmt.Errorf("testauth requires -password (or -accesstoken for XOAUTH2)")
 		}
