@@ -388,3 +388,289 @@ func TestDebugLogging_MultilineResponseFormatting(t *testing.T) {
 		t.Errorf("Last line should start with '<<< 250 ', got: %s", lines[4])
 	}
 }
+
+// TestSelectAuthMechanism tests authentication mechanism selection
+func TestSelectAuthMechanism(t *testing.T) {
+	tests := []struct {
+		name           string
+		requested      []string
+		available      []string
+		hasAccessToken bool
+		expected       string
+	}{
+		// Auto-selection without access token (prefer CRAM-MD5 > PLAIN > LOGIN)
+		{
+			name:           "Auto-select CRAM-MD5 when available",
+			requested:      []string{"auto"},
+			available:      []string{"LOGIN", "PLAIN", "CRAM-MD5"},
+			hasAccessToken: false,
+			expected:       "CRAM-MD5",
+		},
+		{
+			name:           "Auto-select PLAIN when CRAM-MD5 not available",
+			requested:      []string{"auto"},
+			available:      []string{"LOGIN", "PLAIN"},
+			hasAccessToken: false,
+			expected:       "PLAIN",
+		},
+		{
+			name:           "Auto-select LOGIN when only option",
+			requested:      []string{"auto"},
+			available:      []string{"LOGIN"},
+			hasAccessToken: false,
+			expected:       "LOGIN",
+		},
+
+		// Auto-selection WITH access token (prefer XOAUTH2)
+		{
+			name:           "Auto-select XOAUTH2 when access token provided",
+			requested:      []string{"auto"},
+			available:      []string{"LOGIN", "PLAIN", "XOAUTH2", "CRAM-MD5"},
+			hasAccessToken: true,
+			expected:       "XOAUTH2",
+		},
+		{
+			name:           "Fallback to CRAM-MD5 when XOAUTH2 not available but token provided",
+			requested:      []string{"auto"},
+			available:      []string{"LOGIN", "PLAIN", "CRAM-MD5"},
+			hasAccessToken: true,
+			expected:       "CRAM-MD5",
+		},
+
+		// Explicit mechanism selection
+		{
+			name:           "Explicit PLAIN selection",
+			requested:      []string{"PLAIN"},
+			available:      []string{"LOGIN", "PLAIN", "CRAM-MD5"},
+			hasAccessToken: false,
+			expected:       "PLAIN",
+		},
+		{
+			name:           "Explicit LOGIN selection",
+			requested:      []string{"LOGIN"},
+			available:      []string{"LOGIN", "PLAIN", "CRAM-MD5"},
+			hasAccessToken: false,
+			expected:       "LOGIN",
+		},
+		{
+			name:           "Explicit XOAUTH2 selection",
+			requested:      []string{"XOAUTH2"},
+			available:      []string{"LOGIN", "PLAIN", "XOAUTH2"},
+			hasAccessToken: true,
+			expected:       "XOAUTH2",
+		},
+		{
+			name:           "Explicit mechanism not available",
+			requested:      []string{"CRAM-MD5"},
+			available:      []string{"LOGIN", "PLAIN"},
+			hasAccessToken: false,
+			expected:       "",
+		},
+
+		// Case insensitivity
+		{
+			name:           "Case insensitive - lowercase requested",
+			requested:      []string{"plain"},
+			available:      []string{"PLAIN", "LOGIN"},
+			hasAccessToken: false,
+			expected:       "PLAIN",
+		},
+		{
+			name:           "Case insensitive - lowercase available",
+			requested:      []string{"PLAIN"},
+			available:      []string{"plain", "login"},
+			hasAccessToken: false,
+			expected:       "PLAIN",
+		},
+
+		// Edge cases
+		{
+			name:           "Empty available list",
+			requested:      []string{"auto"},
+			available:      []string{},
+			hasAccessToken: false,
+			expected:       "",
+		},
+		{
+			name:           "Empty requested list falls through to auto-select",
+			requested:      []string{},
+			available:      []string{"PLAIN", "LOGIN"},
+			hasAccessToken: false,
+			expected:       "PLAIN",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := selectAuthMechanism(tt.requested, tt.available, tt.hasAccessToken)
+			if result != tt.expected {
+				t.Errorf("selectAuthMechanism(%v, %v, %v) = %q, want %q",
+					tt.requested, tt.available, tt.hasAccessToken, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestXOAUTH2Auth tests XOAUTH2 token format generation
+func TestXOAUTH2Auth(t *testing.T) {
+	tests := []struct {
+		name        string
+		username    string
+		accessToken string
+		wantMech    string
+		wantContain []string
+	}{
+		{
+			name:        "Standard Gmail format",
+			username:    "user@gmail.com",
+			accessToken: "ya29.token123",
+			wantMech:    "XOAUTH2",
+			wantContain: []string{"user=user@gmail.com", "auth=Bearer ya29.token123"},
+		},
+		{
+			name:        "Microsoft 365 format",
+			username:    "user@company.onmicrosoft.com",
+			accessToken: "eyJ0eXAi.jwt.token",
+			wantMech:    "XOAUTH2",
+			wantContain: []string{"user=user@company.onmicrosoft.com", "auth=Bearer eyJ0eXAi.jwt.token"},
+		},
+		{
+			name:        "Empty username",
+			username:    "",
+			accessToken: "token",
+			wantMech:    "XOAUTH2",
+			wantContain: []string{"user=", "auth=Bearer token"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := &xoauth2Auth{
+				username:    tt.username,
+				accessToken: tt.accessToken,
+			}
+
+			mechanism, resp, err := auth.Start(nil)
+			if err != nil {
+				t.Fatalf("xoauth2Auth.Start() error = %v", err)
+			}
+
+			if mechanism != tt.wantMech {
+				t.Errorf("xoauth2Auth.Start() mechanism = %q, want %q", mechanism, tt.wantMech)
+			}
+
+			respStr := string(resp)
+			for _, want := range tt.wantContain {
+				if !strings.Contains(respStr, want) {
+					t.Errorf("xoauth2Auth.Start() response missing %q\ngot: %q", want, respStr)
+				}
+			}
+
+			// Verify SOH separators (\x01)
+			if !strings.Contains(respStr, "\x01") {
+				t.Error("xoauth2Auth.Start() response missing SOH (\\x01) separators")
+			}
+
+			// Verify ends with double SOH
+			if !strings.HasSuffix(respStr, "\x01\x01") {
+				t.Error("xoauth2Auth.Start() response should end with \\x01\\x01")
+			}
+		})
+	}
+}
+
+// TestXOAUTH2Auth_Next tests XOAUTH2 Next method (single-step auth)
+func TestXOAUTH2Auth_Next(t *testing.T) {
+	auth := &xoauth2Auth{
+		username:    "user@example.com",
+		accessToken: "token123",
+	}
+
+	// XOAUTH2 is single-step, Next should return nil
+	resp, err := auth.Next([]byte("error response"), true)
+	if err != nil {
+		t.Errorf("xoauth2Auth.Next() unexpected error = %v", err)
+	}
+	if resp != nil {
+		t.Errorf("xoauth2Auth.Next() should return nil, got %v", resp)
+	}
+
+	// Also test with more=false
+	resp, err = auth.Next(nil, false)
+	if err != nil {
+		t.Errorf("xoauth2Auth.Next() unexpected error = %v", err)
+	}
+	if resp != nil {
+		t.Errorf("xoauth2Auth.Next() should return nil, got %v", resp)
+	}
+}
+
+// TestPlainAuth tests PLAIN authentication token format
+func TestPlainAuth(t *testing.T) {
+	auth := &plainAuth{
+		username: "user@example.com",
+		password: "secret123",
+	}
+
+	mechanism, resp, err := auth.Start(nil)
+	if err != nil {
+		t.Fatalf("plainAuth.Start() error = %v", err)
+	}
+
+	if mechanism != "PLAIN" {
+		t.Errorf("plainAuth.Start() mechanism = %q, want PLAIN", mechanism)
+	}
+
+	// PLAIN format: \0username\0password
+	expected := "\x00user@example.com\x00secret123"
+	if string(resp) != expected {
+		t.Errorf("plainAuth.Start() response = %q, want %q", string(resp), expected)
+	}
+}
+
+// TestLoginAuth tests LOGIN authentication flow
+func TestLoginAuth(t *testing.T) {
+	auth := &loginAuth{
+		username: "user@example.com",
+		password: "secret123",
+	}
+
+	// Start should return LOGIN with no initial response
+	mechanism, resp, err := auth.Start(nil)
+	if err != nil {
+		t.Fatalf("loginAuth.Start() error = %v", err)
+	}
+	if mechanism != "LOGIN" {
+		t.Errorf("loginAuth.Start() mechanism = %q, want LOGIN", mechanism)
+	}
+	if resp != nil {
+		t.Errorf("loginAuth.Start() should return nil response, got %v", resp)
+	}
+
+	// Next should respond to username prompt
+	resp, err = auth.Next([]byte("Username:"), true)
+	if err != nil {
+		t.Errorf("loginAuth.Next(Username) error = %v", err)
+	}
+	if string(resp) != "user@example.com" {
+		t.Errorf("loginAuth.Next(Username) = %q, want user@example.com", string(resp))
+	}
+
+	// Next should respond to password prompt
+	resp, err = auth.Next([]byte("Password:"), true)
+	if err != nil {
+		t.Errorf("loginAuth.Next(Password) error = %v", err)
+	}
+	if string(resp) != "secret123" {
+		t.Errorf("loginAuth.Next(Password) = %q, want secret123", string(resp))
+	}
+
+	// Next with more=false should return nil
+	resp, err = auth.Next(nil, false)
+	if err != nil {
+		t.Errorf("loginAuth.Next(more=false) error = %v", err)
+	}
+	if resp != nil {
+		t.Errorf("loginAuth.Next(more=false) should return nil, got %v", resp)
+	}
+}

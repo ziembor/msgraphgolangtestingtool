@@ -170,3 +170,99 @@ func TestMaskUsername_SecurityProperties(t *testing.T) {
 		}
 	})
 }
+
+// TestMaskAccessToken tests OAuth2 access token masking for security
+func TestMaskAccessToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		token    string
+		expected string
+	}{
+		// Short tokens (<= 16 chars) - fully masked
+		{"Empty token", "", "****"},
+		{"Single char", "a", "****"},
+		{"Short token", "abc123", "****"},
+		{"Exactly 16 chars", "1234567890123456", "****"},
+
+		// Normal tokens (> 16 chars) - show first 8 and last 4
+		{"17 chars", "12345678901234567", "12345678...4567"},
+		{"Gmail-like token", "ya29.a0AfH6SMBxyz123456789abcdef", "ya29.a0A...cdef"},
+		{"Azure AD token", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6Ik", "eyJ0eXAi...I6Ik"},
+		{"Long token", "ya29.a0AfH6SMBxyz123456789abcdefghijklmnopqrstuvwxyz", "ya29.a0A...wxyz"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maskAccessToken(tt.token)
+			if result != tt.expected {
+				t.Errorf("maskAccessToken(%q) = %q, want %q", tt.token, result, tt.expected)
+			}
+
+			// Security verification: Ensure original token is NOT in masked output (except for <= 16 chars)
+			if len(tt.token) > 16 && result == tt.token {
+				t.Errorf("maskAccessToken(%q) = %q, token not masked!", tt.token, result)
+			}
+
+			// Security verification: Ensure masked output is not empty
+			if result == "" {
+				t.Errorf("maskAccessToken(%q) returned empty string", tt.token)
+			}
+		})
+	}
+}
+
+// TestMaskAccessToken_SecurityProperties tests security properties of access token masking
+func TestMaskAccessToken_SecurityProperties(t *testing.T) {
+	t.Run("Masks real-world token formats", func(t *testing.T) {
+		realTokens := []string{
+			"ya29.a0AfH6SMBxyz123456789abcdefghijklmnop", // Google OAuth2
+			"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkN0VHVoTUpta", // Azure AD JWT
+			"gho_16C7e42F292c6912E7710c838347Ae178B4a", // GitHub
+			"xoxb-FAKE-TOKEN-FOR-TESTING-ONLY-NotARealToken123", // Slack-like format (fake)
+		}
+
+		for _, token := range realTokens {
+			masked := maskAccessToken(token)
+			// Ensure token is not fully visible
+			if masked == token {
+				t.Errorf("maskAccessToken() did not mask token: %s", token)
+			}
+			// Ensure middle portion is hidden
+			if len(masked) > 20 {
+				t.Errorf("maskAccessToken() exposed too much of token: %s -> %s", token, masked)
+			}
+		}
+	})
+
+	t.Run("Masked output always contains separator", func(t *testing.T) {
+		testTokens := []string{"", "a", "short", "exactly16charss!", "longerToken12345678"}
+		for _, token := range testTokens {
+			masked := maskAccessToken(token)
+			// Short tokens get ****, long tokens get ...
+			if len(token) <= 16 {
+				if masked != "****" {
+					t.Errorf("maskAccessToken(%q) should be '****', got %s", token, masked)
+				}
+			} else {
+				if !contains(masked, "...") {
+					t.Errorf("maskAccessToken(%q) should contain '...', got %s", token, masked)
+				}
+			}
+		}
+	})
+}
+
+// helper function for string contains check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
