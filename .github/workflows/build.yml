@@ -18,19 +18,19 @@ jobs:
           - os: windows-latest
             graph_binary: msgraphtool.exe
             smtp_binary: smtptool.exe
-            artifact_name: msgraphtool-windows
-            zip_name: msgraphtool-windows.zip
+            artifact_name: gomailtesttool-windows
+            zip_name: gomailtesttool-windows.zip
           - os: ubuntu-latest
             graph_binary: msgraphtool
             smtp_binary: smtptool
-            artifact_name: msgraphtool-linux-amd64
-            zip_name: msgraphtool-linux-amd64.zip
+            artifact_name: gomailtesttool-linux-amd64
+            zip_name: gomailtesttool-linux-amd64.zip
             goarch: amd64
           - os: macos-latest
             graph_binary: msgraphtool
             smtp_binary: smtptool
-            artifact_name: msgraphtool-macos-arm64
-            zip_name: msgraphtool-macos-arm64.zip
+            artifact_name: gomailtesttool-macos-arm64
+            zip_name: gomailtesttool-macos-arm64.zip
             goarch: arm64
 
     steps:
@@ -152,19 +152,19 @@ jobs:
           ### Installation
 
           **Windows:**
-          1. Download `msgraphtool-windows.zip`
+          1. Download `gomailtesttool-windows.zip`
           2. Extract the ZIP file
           3. Run `msgraphtool.exe` or `smtptool.exe` directly
 
           **Linux (amd64):**
-          1. Download `msgraphtool-linux-amd64.zip`
-          2. Extract: `unzip msgraphtool-linux-amd64.zip`
+          1. Download `gomailtesttool-linux-amd64.zip`
+          2. Extract: `unzip gomailtesttool-linux-amd64.zip`
           3. Make executable: `chmod +x msgraphtool smtptool`
           4. Run: `./msgraphtool` or `./smtptool`
 
           **macOS (Apple Silicon/arm64):**
-          1. Download `msgraphtool-macos-arm64.zip`
-          2. Extract: `unzip msgraphtool-macos-arm64.zip`
+          1. Download `gomailtesttool-macos-arm64.zip`
+          2. Extract: `unzip gomailtesttool-macos-arm64.zip`
           3. Make executable: `chmod +x msgraphtool smtptool`
           4. Run: `./msgraphtool` or `./smtptool`
 
