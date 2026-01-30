@@ -107,7 +107,11 @@ func (c *SMTPClient) Connect(ctx context.Context) error {
 
 		tlsConn := tls.Client(conn, tlsConfig)
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
-			conn.Close()
+			// Close the underlying connection; log any close error in verbose mode
+			// but return the TLS error as it's more relevant for diagnostics
+			if closeErr := conn.Close(); closeErr != nil {
+				c.debugLogMessage(fmt.Sprintf("Warning: close error after TLS failure: %v", closeErr))
+			}
 			return fmt.Errorf("SMTPS TLS handshake failed: %w", err)
 		}
 

@@ -5,10 +5,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"io"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"msgraphgolangtestingtool/internal/smtp/protocol"
 )
@@ -673,4 +675,198 @@ func TestLoginAuth(t *testing.T) {
 	if resp != nil {
 		t.Errorf("loginAuth.Next(more=false) should return nil, got %v", resp)
 	}
+}
+
+// TestIsEncrypted tests the IsEncrypted method for SMTPS/STARTTLS state tracking
+func TestIsEncrypted(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlsState *tls.ConnectionState
+		expected bool
+	}{
+		{
+			name:     "No TLS - not encrypted",
+			tlsState: nil,
+			expected: false,
+		},
+		{
+			name:     "TLS active - encrypted",
+			tlsState: &tls.ConnectionState{Version: tls.VersionTLS12},
+			expected: true,
+		},
+		{
+			name:     "TLS 1.3 active - encrypted",
+			tlsState: &tls.ConnectionState{Version: tls.VersionTLS13},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &SMTPClient{
+				tlsState: tt.tlsState,
+			}
+
+			result := client.IsEncrypted()
+			if result != tt.expected {
+				t.Errorf("IsEncrypted() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetTLSState tests the GetTLSState method for retrieving TLS connection info
+func TestGetTLSState(t *testing.T) {
+	t.Run("Returns nil when no TLS", func(t *testing.T) {
+		client := &SMTPClient{
+			tlsState: nil,
+		}
+
+		state := client.GetTLSState()
+		if state != nil {
+			t.Errorf("GetTLSState() = %v, want nil", state)
+		}
+	})
+
+	t.Run("Returns state when TLS active", func(t *testing.T) {
+		expectedState := &tls.ConnectionState{
+			Version:           tls.VersionTLS12,
+			CipherSuite:       tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			ServerName:        "smtp.example.com",
+			HandshakeComplete: true,
+		}
+
+		client := &SMTPClient{
+			tlsState: expectedState,
+		}
+
+		state := client.GetTLSState()
+		if state == nil {
+			t.Fatal("GetTLSState() = nil, want non-nil")
+		}
+		if state.Version != expectedState.Version {
+			t.Errorf("GetTLSState().Version = %v, want %v", state.Version, expectedState.Version)
+		}
+		if state.ServerName != expectedState.ServerName {
+			t.Errorf("GetTLSState().ServerName = %v, want %v", state.ServerName, expectedState.ServerName)
+		}
+	})
+}
+
+// TestSMTPClient_NewSMTPClient tests client initialization
+func TestSMTPClient_NewSMTPClient(t *testing.T) {
+	config := &Config{
+		Timeout:     30 * time.Second,
+		VerboseMode: true,
+		SMTPS:       true,
+		RateLimit:   10.0,
+	}
+
+	client := NewSMTPClient("smtp.example.com", 465, config)
+
+	if client.host != "smtp.example.com" {
+		t.Errorf("NewSMTPClient() host = %q, want %q", client.host, "smtp.example.com")
+	}
+	if client.port != 465 {
+		t.Errorf("NewSMTPClient() port = %d, want %d", client.port, 465)
+	}
+	if client.config != config {
+		t.Error("NewSMTPClient() config not set correctly")
+	}
+	if client.limiter == nil {
+		t.Error("NewSMTPClient() limiter not initialized")
+	}
+	// New client should not be encrypted yet
+	if client.IsEncrypted() {
+		t.Error("NewSMTPClient() should not be encrypted before Connect()")
+	}
+}
+
+// TestSMTPClient_GetBanner tests banner retrieval
+func TestSMTPClient_GetBanner(t *testing.T) {
+	t.Run("Empty banner before connect", func(t *testing.T) {
+		client := &SMTPClient{}
+		if banner := client.GetBanner(); banner != "" {
+			t.Errorf("GetBanner() = %q, want empty string", banner)
+		}
+	})
+
+	t.Run("Returns stored banner", func(t *testing.T) {
+		client := &SMTPClient{
+			banner: "smtp.example.com ESMTP ready",
+		}
+		expected := "smtp.example.com ESMTP ready"
+		if banner := client.GetBanner(); banner != expected {
+			t.Errorf("GetBanner() = %q, want %q", banner, expected)
+		}
+	})
+}
+
+// TestSMTPClient_GetCapabilities tests capabilities retrieval
+func TestSMTPClient_GetCapabilities(t *testing.T) {
+	t.Run("Empty capabilities before EHLO", func(t *testing.T) {
+		client := &SMTPClient{}
+		caps := client.GetCapabilities()
+		if caps != nil && len(caps) > 0 {
+			t.Errorf("GetCapabilities() = %v, want nil or empty", caps)
+		}
+	})
+
+	t.Run("Returns stored capabilities", func(t *testing.T) {
+		caps := protocol.Capabilities{
+			"STARTTLS":  []string{},
+			"AUTH":      []string{"PLAIN", "LOGIN"},
+			"SIZE":      []string{"35882577"},
+			"8BITMIME":  []string{},
+		}
+		client := &SMTPClient{
+			capabilities: caps,
+		}
+
+		result := client.GetCapabilities()
+		if result == nil {
+			t.Fatal("GetCapabilities() = nil, want non-nil")
+		}
+		if _, ok := result["STARTTLS"]; !ok {
+			t.Error("GetCapabilities() missing STARTTLS")
+		}
+		if _, ok := result["AUTH"]; !ok {
+			t.Error("GetCapabilities() missing AUTH")
+		}
+	})
+}
+
+// TestSMTPSConfig tests SMTPS-specific configuration handling
+func TestSMTPSConfig(t *testing.T) {
+	t.Run("SMTPS config sets correct defaults", func(t *testing.T) {
+		config := NewConfig()
+		config.SMTPS = true
+		config.Host = "smtp.gmail.com"
+		config.Action = ActionTestConnect
+
+		// Validate should change port from 25 to 465
+		err := validateConfiguration(config)
+		if err != nil {
+			t.Fatalf("validateConfiguration() error = %v", err)
+		}
+		if config.Port != 465 {
+			t.Errorf("SMTPS config port = %d, want 465", config.Port)
+		}
+	})
+
+	t.Run("SMTPS with explicit port preserves port", func(t *testing.T) {
+		config := NewConfig()
+		config.SMTPS = true
+		config.Host = "smtp.example.com"
+		config.Port = 587 // Explicit non-default port
+		config.Action = ActionTestConnect
+
+		err := validateConfiguration(config)
+		if err != nil {
+			t.Fatalf("validateConfiguration() error = %v", err)
+		}
+		if config.Port != 587 {
+			t.Errorf("SMTPS config port = %d, want 587 (explicit)", config.Port)
+		}
+	})
 }
