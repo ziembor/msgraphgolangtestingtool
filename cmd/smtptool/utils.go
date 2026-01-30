@@ -33,3 +33,18 @@ func maskUsername(username string) string {
 	// Show first 2 and last 2 characters
 	return username[:2] + "****" + username[len(username)-2:]
 }
+
+// maskAccessToken masks an OAuth2 access token for display in logs.
+// For tokens <= 16 characters, returns "****"
+// For longer tokens, shows first 8 and last 4 characters with ... in between
+// Access tokens are typically longer than passwords, so we show more context.
+//
+// Examples:
+//   - "short" -> "****"
+//   - "ya29.a0AfH6SMBxyz123456789abcdef" -> "ya29.a0A...cdef"
+func maskAccessToken(token string) string {
+	if len(token) <= 16 {
+		return "****"
+	}
+	return token[:8] + "..." + token[len(token)-4:]
+}

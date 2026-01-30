@@ -127,7 +127,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		methodsToTry = []string{config.AuthMethod}
 	}
 
-	methodUsed := selectAuthMechanism(methodsToTry, authMechanisms)
+	methodUsed := selectAuthMechanism(methodsToTry, authMechanisms, config.AccessToken != "")
 	if methodUsed == "" {
 		msg := fmt.Sprintf("No compatible authentication mechanism found (requested: %s, available: %s)",
 			config.AuthMethod, strings.Join(authMechanisms, ", "))
@@ -143,7 +143,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	logger.LogDebug(slogLogger, "Authenticating", "method", methodUsed, "username", maskUsername(config.Username))
 
 	// Authenticate
-	err = client.Auth(config.Username, config.Password, []string{methodUsed})
+	err = client.Auth(config.Username, config.Password, config.AccessToken, []string{methodUsed})
 
 	authResult := "SUCCESS"
 	status := "SUCCESS"

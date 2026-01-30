@@ -23,9 +23,10 @@ type Config struct {
 	Timeout time.Duration
 
 	// Authentication
-	Username   string
-	Password   string
-	AuthMethod string // PLAIN, LOGIN, CRAM-MD5, or "auto"
+	Username    string
+	Password    string
+	AccessToken string // OAuth2 access token for XOAUTH2 authentication
+	AuthMethod  string // PLAIN, LOGIN, CRAM-MD5, XOAUTH2, or "auto"
 
 	// Email configuration (for sendmail)
 	From    string
@@ -107,7 +108,10 @@ func parseAndConfigureFlags() *Config {
 		fmt.Fprintf(flag.CommandLine.Output(), "\nSMTPS Examples (implicit TLS on port 465):\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action testconnect -host smtp.gmail.com -port 465 -smtps\n", os.Args[0])
 		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action teststarttls -host smtp.gmail.com -port 465 -smtps\n", os.Args[0])
-		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.gmail.com -smtps -username user@gmail.com -password secret -from sender@gmail.com -to recipient@example.com\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.gmail.com -smtps -username user@gmail.com -password secret -from sender@gmail.com -to recipient@example.com\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "\nXOAUTH2 Examples (OAuth2 authentication):\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action testauth -host smtp.gmail.com -smtps -username user@gmail.com -accesstoken \"ya29...\"\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.office365.com -port 587 -username user@company.com -accesstoken \"eyJ...\" -from user@company.com -to recipient@example.com\n\n", os.Args[0])
 	}
 
 	// Define flags
@@ -118,7 +122,8 @@ func parseAndConfigureFlags() *Config {
 	timeout := flag.Int("timeout", 30, "Connection timeout in seconds (env: SMTPTIMEOUT)")
 	username := flag.String("username", "", "SMTP username for authentication (env: SMTPUSERNAME)")
 	password := flag.String("password", "", "SMTP password for authentication (env: SMTPPASSWORD)")
-	authMethod := flag.String("authmethod", "auto", "Authentication method: PLAIN, LOGIN, CRAM-MD5, auto (env: SMTPAUTHMETHOD)")
+	accessToken := flag.String("accesstoken", "", "OAuth2 access token for XOAUTH2 authentication (env: SMTPACCESSTOKEN)")
+	authMethod := flag.String("authmethod", "auto", "Authentication method: PLAIN, LOGIN, CRAM-MD5, XOAUTH2, auto (env: SMTPAUTHMETHOD)")
 	from := flag.String("from", "", "Sender email address for sendmail (env: SMTPFROM)")
 	to := flag.String("to", "", "Comma-separated recipient email addresses (env: SMTPTO)")
 	subject := flag.String("subject", "SMTP Test", "Email subject (env: SMTPSUBJECT)")
@@ -146,6 +151,7 @@ func parseAndConfigureFlags() *Config {
 	config.Timeout = time.Duration(*timeout) * time.Second
 	config.Username = *username
 	config.Password = *password
+	config.AccessToken = *accessToken
 	config.AuthMethod = *authMethod
 	config.From = *from
 	if *to != "" {
@@ -190,6 +196,9 @@ func applyEnvironmentVariables(config *Config) {
 	}
 	if config.Password == "" {
 		config.Password = os.Getenv("SMTPPASSWORD")
+	}
+	if config.AccessToken == "" {
+		config.AccessToken = os.Getenv("SMTPACCESSTOKEN")
 	}
 	if config.From == "" {
 		config.From = os.Getenv("SMTPFROM")
@@ -258,8 +267,16 @@ func validateConfiguration(config *Config) error {
 		if config.Username == "" {
 			return fmt.Errorf("testauth requires -username")
 		}
-		if config.Password == "" {
-			return fmt.Errorf("testauth requires -password")
+		// XOAUTH2 requires accesstoken instead of password
+		if strings.EqualFold(config.AuthMethod, "XOAUTH2") {
+			if config.AccessToken == "" {
+				return fmt.Errorf("XOAUTH2 authentication requires -accesstoken")
+			}
+		} else if config.AccessToken != "" {
+			// If accesstoken provided, assume XOAUTH2
+			// No password required
+		} else if config.Password == "" {
+			return fmt.Errorf("testauth requires -password (or -accesstoken for XOAUTH2)")
 		}
 
 	case ActionSendMail:

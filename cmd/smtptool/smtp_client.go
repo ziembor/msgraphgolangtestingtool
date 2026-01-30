@@ -251,14 +251,15 @@ func (cw *connWrapper) Close() error {
 }
 
 // Auth performs SMTP authentication.
-func (c *SMTPClient) Auth(username, password string, mechanisms []string) error {
+// For XOAUTH2, pass the OAuth2 access token in the accessToken parameter.
+func (c *SMTPClient) Auth(username, password, accessToken string, mechanisms []string) error {
 	// Apply rate limiting
 	if err := c.limiter.Wait(context.Background()); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
 	// Determine which mechanism to use
-	mechanism := selectAuthMechanism(mechanisms, c.capabilities.GetAuthMechanisms())
+	mechanism := selectAuthMechanism(mechanisms, c.capabilities.GetAuthMechanisms(), accessToken != "")
 	if mechanism == "" {
 		return fmt.Errorf("no compatible authentication mechanism found")
 	}
@@ -277,6 +278,8 @@ func (c *SMTPClient) Auth(username, password string, mechanisms []string) error 
 		auth = &loginAuth{username, password}
 	case "CRAM-MD5":
 		auth = smtp.CRAMMD5Auth(username, password)
+	case "XOAUTH2":
+		auth = &xoauth2Auth{username, accessToken}
 	default:
 		return fmt.Errorf("unsupported authentication mechanism: %s", mechanism)
 	}
@@ -417,7 +420,8 @@ func (c *SMTPClient) GetTLSState() *tls.ConnectionState {
 }
 
 // selectAuthMechanism selects the best authentication mechanism.
-func selectAuthMechanism(requested []string, available []string) string {
+// If hasAccessToken is true, XOAUTH2 is preferred when available.
+func selectAuthMechanism(requested []string, available []string, hasAccessToken bool) string {
 	// If specific mechanism requested
 	if len(requested) > 0 && requested[0] != "auto" {
 		for _, req := range requested {
@@ -430,8 +434,14 @@ func selectAuthMechanism(requested []string, available []string) string {
 		return ""
 	}
 
-	// Auto-select: prefer stronger mechanisms
-	preferenceOrder := []string{"CRAM-MD5", "PLAIN", "LOGIN"}
+	// Auto-select: prefer XOAUTH2 if access token provided, otherwise prefer stronger mechanisms
+	var preferenceOrder []string
+	if hasAccessToken {
+		preferenceOrder = []string{"XOAUTH2", "CRAM-MD5", "PLAIN", "LOGIN"}
+	} else {
+		preferenceOrder = []string{"CRAM-MD5", "PLAIN", "LOGIN"}
+	}
+
 	for _, preferred := range preferenceOrder {
 		for _, avail := range available {
 			if strings.EqualFold(preferred, avail) {
@@ -481,5 +491,24 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 			return []byte(a.password), nil
 		}
 	}
+	return nil, nil
+}
+
+// xoauth2Auth implements XOAUTH2 authentication (OAuth 2.0 bearer token).
+// Token format: user=<email>\x01auth=Bearer <token>\x01\x01
+type xoauth2Auth struct {
+	username    string
+	accessToken string
+}
+
+func (a *xoauth2Auth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	// XOAUTH2 token format: "user=" + email + "\x01" + "auth=Bearer " + token + "\x01\x01"
+	token := fmt.Sprintf("user=%s\x01auth=Bearer %s\x01\x01", a.username, a.accessToken)
+	return "XOAUTH2", []byte(token), nil
+}
+
+func (a *xoauth2Auth) Next(fromServer []byte, more bool) ([]byte, error) {
+	// XOAUTH2 is single-step, but server may send error JSON on failure
+	// Return empty to signal we have nothing more to send
 	return nil, nil
 }

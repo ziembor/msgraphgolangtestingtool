@@ -109,11 +109,11 @@ func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		}
 	}
 
-	// Authenticate if credentials provided
-	if config.Username != "" && config.Password != "" {
+	// Authenticate if credentials provided (password or access token)
+	if config.Username != "" && (config.Password != "" || config.AccessToken != "") {
 		fmt.Println("Authenticating...")
 		authMechanisms := caps.GetAuthMechanisms()
-		methodToUse := selectAuthMechanism([]string{config.AuthMethod}, authMechanisms)
+		methodToUse := selectAuthMechanism([]string{config.AuthMethod}, authMechanisms, config.AccessToken != "")
 
 		if methodToUse == "" {
 			msg := "No compatible authentication mechanism found"
@@ -124,7 +124,7 @@ func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			return errors.New(msg)
 		}
 
-		if err := client.Auth(config.Username, config.Password, []string{methodToUse}); err != nil {
+		if err := client.Auth(config.Username, config.Password, config.AccessToken, []string{methodToUse}); err != nil {
 			logger.LogError(slogLogger, "Authentication failed",
 				"error", err,
 				"username", maskUsername(config.Username),
