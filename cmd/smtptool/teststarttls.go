@@ -14,8 +14,13 @@ import (
 )
 
 // testStartTLS performs comprehensive TLS/SSL testing with detailed diagnostics.
+// For SMTPS mode, tests implicit TLS (TLS handshake happens immediately after TCP connect).
 func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, slogLogger *slog.Logger) error {
-	fmt.Printf("Testing STARTTLS on %s:%d...\n\n", config.Host, config.Port)
+	if config.SMTPS {
+		fmt.Printf("Testing SMTPS (implicit TLS) on %s:%d...\n\n", config.Host, config.Port)
+	} else {
+		fmt.Printf("Testing STARTTLS on %s:%d...\n\n", config.Host, config.Port)
+	}
 
 	// Write CSV header
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
@@ -41,7 +46,11 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 	}
 	defer client.Close()
 
-	fmt.Printf("✓ Connected\n")
+	if config.SMTPS {
+		fmt.Printf("✓ Connected with SMTPS (implicit TLS)\n")
+	} else {
+		fmt.Printf("✓ Connected\n")
+	}
 
 	// Send EHLO
 	logger.LogDebug(slogLogger, "Sending EHLO command")
@@ -55,46 +64,63 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		return err
 	}
 
-	// Check STARTTLS capability
-	if !caps.SupportsSTARTTLS() {
-		msg := "STARTTLS not advertised by server"
-		fmt.Printf("✗ %s\n", msg)
-		logger.LogWarn(slogLogger, msg)
-		csvLogger.WriteRow([]string{
-			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
-			"false", "", "", "", "", "", "", "", "", "", msg,
-		})
-		return errors.New(msg)
+	var connState *tls.ConnectionState
+
+	if config.SMTPS {
+		// For SMTPS, TLS handshake already happened during Connect()
+		connState = client.GetTLSState()
+		if connState == nil {
+			msg := "SMTPS connection state not available"
+			logger.LogError(slogLogger, msg)
+			csvLogger.WriteRow([]string{
+				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
+				"N/A (SMTPS)", "", "", "", "", "", "", "", "", "", msg,
+			})
+			return errors.New(msg)
+		}
+		fmt.Printf("✓ SMTPS TLS handshake completed\n\n")
+	} else {
+		// Check STARTTLS capability
+		if !caps.SupportsSTARTTLS() {
+			msg := "STARTTLS not advertised by server"
+			fmt.Printf("✗ %s\n", msg)
+			logger.LogWarn(slogLogger, msg)
+			csvLogger.WriteRow([]string{
+				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
+				"false", "", "", "", "", "", "", "", "", "", msg,
+			})
+			return errors.New(msg)
+		}
+
+		fmt.Printf("✓ STARTTLS capability available\n\n")
+
+		// Perform STARTTLS handshake
+		fmt.Println("Performing TLS handshake...")
+		tlsVersion := smtptls.ParseTLSVersion(config.TLSVersion)
+		tlsConfig := &tls.Config{
+			ServerName:         config.Host,
+			InsecureSkipVerify: config.SkipVerify,
+			MinVersion:         tlsVersion,
+			MaxVersion:         tlsVersion, // Force exact TLS version
+		}
+
+		logger.LogDebug(slogLogger, "Starting TLS handshake",
+			"skipVerify", config.SkipVerify,
+			"tlsVersion", config.TLSVersion,
+			"minVersion", tlsVersion,
+			"maxVersion", tlsVersion)
+		connState, err = client.StartTLS(tlsConfig)
+		if err != nil {
+			logger.LogError(slogLogger, "STARTTLS handshake failed", "error", err)
+			csvLogger.WriteRow([]string{
+				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
+				"true", "", "", "", "", "", "", "", "", "", err.Error(),
+			})
+			return fmt.Errorf("TLS handshake failed: %w", err)
+		}
+
+		fmt.Printf("✓ TLS handshake successful\n\n")
 	}
-
-	fmt.Printf("✓ STARTTLS capability available\n\n")
-
-	// Perform STARTTLS handshake
-	fmt.Println("Performing TLS handshake...")
-	tlsVersion := smtptls.ParseTLSVersion(config.TLSVersion)
-	tlsConfig := &tls.Config{
-		ServerName:         config.Host,
-		InsecureSkipVerify: config.SkipVerify,
-		MinVersion:         tlsVersion,
-		MaxVersion:         tlsVersion, // Force exact TLS version
-	}
-
-	logger.LogDebug(slogLogger, "Starting TLS handshake",
-		"skipVerify", config.SkipVerify,
-		"tlsVersion", config.TLSVersion,
-		"minVersion", tlsVersion,
-		"maxVersion", tlsVersion)
-	connState, err := client.StartTLS(tlsConfig)
-	if err != nil {
-		logger.LogError(slogLogger, "STARTTLS handshake failed", "error", err)
-		csvLogger.WriteRow([]string{
-			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
-			"true", "", "", "", "", "", "", "", "", "", err.Error(),
-		})
-		return fmt.Errorf("TLS handshake failed: %w", err)
-	}
-
-	fmt.Printf("✓ TLS handshake successful\n\n")
 
 	// Analyze TLS connection
 	tlsInfo := smtptls.AnalyzeTLSConnection(connState)
@@ -136,10 +162,16 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		fmt.Println("  ✓ Encrypted connection working")
 	}
 
+	// Determine STARTTLS availability value for CSV
+	starttlsAvailable := "true"
+	if config.SMTPS {
+		starttlsAvailable = "N/A (SMTPS)"
+	}
+
 	// Log to CSV
 	csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
-		"true",
+		starttlsAvailable,
 		tlsInfo.Version,
 		tlsInfo.CipherSuite,
 		certInfo.Subject,
@@ -152,7 +184,11 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		"",
 	})
 
-	fmt.Println("\n✓ STARTTLS test completed successfully")
+	if config.SMTPS {
+		fmt.Println("\n✓ SMTPS test completed successfully")
+	} else {
+		fmt.Println("\n✓ STARTTLS test completed successfully")
+	}
 	logger.LogInfo(slogLogger, "teststarttls completed successfully",
 		"tlsVersion", tlsInfo.Version,
 		"cipherSuite", tlsInfo.CipherSuite)

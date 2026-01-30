@@ -14,7 +14,11 @@ import (
 
 // testAuth performs SMTP authentication testing.
 func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slogLogger *slog.Logger) error {
-	fmt.Printf("Testing SMTP authentication on %s:%d...\n\n", config.Host, config.Port)
+	if config.SMTPS {
+		fmt.Printf("Testing SMTP authentication on %s:%d (SMTPS)...\n\n", config.Host, config.Port)
+	} else {
+		fmt.Printf("Testing SMTP authentication on %s:%d...\n\n", config.Host, config.Port)
+	}
 
 	// Write CSV header
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
@@ -38,7 +42,11 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	}
 	defer client.Close()
 
-	fmt.Printf("✓ Connected\n")
+	if config.SMTPS {
+		fmt.Printf("✓ Connected with SMTPS (implicit TLS)\n")
+	} else {
+		fmt.Printf("✓ Connected\n")
+	}
 
 	// Send EHLO
 	logger.LogDebug(slogLogger, "Sending EHLO command")
@@ -67,9 +75,16 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 
 	fmt.Printf("✓ Server supports AUTH mechanisms: %s\n\n", strings.Join(authMechanisms, ", "))
 
-	// STARTTLS if on port 25/587 and available
+	// Handle TLS: either already established via SMTPS, or upgrade via STARTTLS
 	var tlsState *tls.ConnectionState
-	if (config.Port == 25 || config.Port == 587) && caps.SupportsSTARTTLS() {
+	if config.SMTPS {
+		// For SMTPS, TLS is already established
+		tlsState = client.GetTLSState()
+		if config.VerboseMode && tlsState != nil {
+			displayTLSCipherInfo(tlsState)
+		}
+	} else if (config.Port == 25 || config.Port == 587) && caps.SupportsSTARTTLS() {
+		// STARTTLS if on port 25/587 and available
 		fmt.Println("Upgrading to TLS before authentication...")
 		tlsVersion := smtptls.ParseTLSVersion(config.TLSVersion)
 		tlsConfig := &tls.Config{

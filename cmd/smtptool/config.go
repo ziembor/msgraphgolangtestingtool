@@ -35,6 +35,7 @@ type Config struct {
 
 	// TLS configuration
 	StartTLS   bool   // Force STARTTLS
+	SMTPS      bool   // Use SMTPS (implicit TLS on port 465)
 	SkipVerify bool   // Skip TLS certificate verification
 	TLSVersion string // TLS version to use (exact match): 1.2, 1.3
 
@@ -102,7 +103,11 @@ func parseAndConfigureFlags() *Config {
 		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action testconnect -host smtp.example.com -port 25\n", os.Args[0])
 		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action teststarttls -host smtp.example.com -port 587\n", os.Args[0])
 		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action testauth -host smtp.example.com -port 587 -username user@example.com -password secret\n", os.Args[0])
-		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.example.com -port 587 -username user@example.com -password secret -from sender@example.com -to recipient@example.com\n\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.example.com -port 587 -username user@example.com -password secret -from sender@example.com -to recipient@example.com\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "\nSMTPS Examples (implicit TLS on port 465):\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action testconnect -host smtp.gmail.com -port 465 -smtps\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action teststarttls -host smtp.gmail.com -port 465 -smtps\n", os.Args[0])
+		fmt.Fprintf(flag.CommandLine.Output(), "  %s -action sendmail -host smtp.gmail.com -smtps -username user@gmail.com -password secret -from sender@gmail.com -to recipient@example.com\n\n", os.Args[0])
 	}
 
 	// Define flags
@@ -119,6 +124,7 @@ func parseAndConfigureFlags() *Config {
 	subject := flag.String("subject", "SMTP Test", "Email subject (env: SMTPSUBJECT)")
 	body := flag.String("body", "This is a test message from smtptool", "Email body text (env: SMTPBODY)")
 	startTLS := flag.Bool("starttls", false, "Force STARTTLS usage (env: SMTPSTARTTLS)")
+	smtps := flag.Bool("smtps", false, "Use SMTPS (implicit TLS), typically on port 465 (env: SMTPSMTPS)")
 	skipVerify := flag.Bool("skipverify", false, "Skip TLS certificate verification (insecure) (env: SMTPSKIPVERIFY)")
 	tlsVersion := flag.String("tlsversion", "1.2", "TLS version to use (exact): 1.2, 1.3 (env: SMTPTLSVERSION)")
 	proxyURL := flag.String("proxy", "", "HTTP/HTTPS proxy URL (env: SMTPPROXY)")
@@ -148,6 +154,7 @@ func parseAndConfigureFlags() *Config {
 	config.Subject = *subject
 	config.Body = *body
 	config.StartTLS = *startTLS
+	config.SMTPS = *smtps
 	config.SkipVerify = *skipVerify
 	config.TLSVersion = *tlsVersion
 	config.ProxyURL = *proxyURL
@@ -195,6 +202,11 @@ func applyEnvironmentVariables(config *Config) {
 			config.RateLimit = rateLimit
 		}
 	}
+	if !config.SMTPS {
+		if smtpsStr := os.Getenv("SMTPSMTPS"); smtpsStr != "" {
+			config.SMTPS = smtpsStr == "true" || smtpsStr == "1"
+		}
+	}
 }
 
 // validateConfiguration validates the configuration.
@@ -210,6 +222,16 @@ func validateConfiguration(config *Config) error {
 	}
 	if !valid {
 		return fmt.Errorf("invalid action: %s (must be one of: %s)", config.Action, strings.Join(validActions, ", "))
+	}
+
+	// Validate mutual exclusion: -smtps and -starttls cannot be used together
+	if config.SMTPS && config.StartTLS {
+		return fmt.Errorf("cannot use both -smtps and -starttls flags simultaneously")
+	}
+
+	// Smart port default: if -smtps is set and port is 25 (default), change to 465
+	if config.SMTPS && config.Port == 25 {
+		config.Port = 465
 	}
 
 	// Validate host (required for all actions)

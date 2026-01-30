@@ -12,7 +12,11 @@ import (
 
 // testConnect performs basic SMTP connectivity and capability testing.
 func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, slogLogger *slog.Logger) error {
-	fmt.Printf("Testing SMTP connectivity to %s:%d...\n\n", config.Host, config.Port)
+	if config.SMTPS {
+		fmt.Printf("Testing SMTPS connectivity to %s:%d...\n\n", config.Host, config.Port)
+	} else {
+		fmt.Printf("Testing SMTP connectivity to %s:%d...\n\n", config.Host, config.Port)
+	}
 
 	// Write CSV header
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
@@ -34,7 +38,11 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	}
 	defer client.Close()
 
-	fmt.Printf("✓ Connected successfully\n")
+	if config.SMTPS {
+		fmt.Printf("✓ Connected successfully with SMTPS (implicit TLS)\n")
+	} else {
+		fmt.Printf("✓ Connected successfully\n")
+	}
 	fmt.Printf("  Banner: %s\n\n", client.GetBanner())
 
 	// Send EHLO
@@ -74,7 +82,11 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 		capsStr, fmt.Sprintf("%t", exchangeInfo.IsExchange), "",
 	})
 
-	fmt.Println("✓ Connectivity test completed successfully")
+	if config.SMTPS {
+		fmt.Println("✓ SMTPS connectivity test completed successfully")
+	} else {
+		fmt.Println("✓ Connectivity test completed successfully")
+	}
 	logger.LogInfo(slogLogger, "testconnect completed successfully")
 
 	return nil

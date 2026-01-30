@@ -12,6 +12,7 @@ import (
 
 	"msgraphgolangtestingtool/internal/common/ratelimit"
 	"msgraphgolangtestingtool/internal/smtp/protocol"
+	smtptls "msgraphgolangtestingtool/internal/smtp/tls"
 )
 
 // SMTPClient wraps SMTP connection with enhanced diagnostics.
@@ -24,7 +25,8 @@ type SMTPClient struct {
 	banner       string
 	capabilities protocol.Capabilities
 	limiter      *ratelimit.Limiter
-	smtpClient   *smtp.Client // Reusable stdlib client after STARTTLS
+	smtpClient   *smtp.Client           // Reusable stdlib client after STARTTLS or SMTPS
+	tlsState     *tls.ConnectionState   // Stored TLS state for SMTPS connections
 }
 
 // debugLogCommand logs an SMTP command being sent to the server.
@@ -72,6 +74,7 @@ func NewSMTPClient(host string, port int, config *Config) *SMTPClient {
 }
 
 // Connect establishes a TCP connection and reads the banner.
+// For SMTPS mode, performs immediate TLS handshake before reading banner.
 func (c *SMTPClient) Connect(ctx context.Context) error {
 	// Apply rate limiting
 	if err := c.limiter.Wait(ctx); err != nil {
@@ -88,6 +91,35 @@ func (c *SMTPClient) Connect(ctx context.Context) error {
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// SMTPS mode: perform immediate TLS handshake before any SMTP protocol
+	if c.config.SMTPS {
+		c.debugLogMessage("SMTPS mode: Performing immediate TLS handshake...")
+
+		tlsVersion := smtptls.ParseTLSVersion(c.config.TLSVersion)
+		tlsConfig := &tls.Config{
+			ServerName:         c.host,
+			InsecureSkipVerify: c.config.SkipVerify,
+			MinVersion:         tlsVersion,
+			MaxVersion:         tlsVersion, // Force exact TLS version
+		}
+
+		tlsConn := tls.Client(conn, tlsConfig)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			conn.Close()
+			return fmt.Errorf("SMTPS TLS handshake failed: %w", err)
+		}
+
+		c.debugLogMessage("SMTPS TLS handshake completed successfully")
+
+		conn = tlsConn
+		state := tlsConn.ConnectionState()
+		c.tlsState = &state
+
+		// Create smtp.Client for later Auth/SendMail operations
+		wrapper := &connWrapper{reader: bufio.NewReader(conn), conn: conn}
+		c.smtpClient = &smtp.Client{Text: textproto.NewConn(wrapper)}
 	}
 
 	c.conn = conn
@@ -192,8 +224,9 @@ func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, erro
 	}
 	c.smtpClient = &smtp.Client{Text: textproto.NewConn(wrapper)}
 
-	// Get connection state
+	// Get connection state and store it
 	state := tlsConn.ConnectionState()
+	c.tlsState = &state
 
 	return &state, nil
 }
@@ -371,6 +404,16 @@ func (c *SMTPClient) GetBanner() string {
 // GetCapabilities returns the server capabilities.
 func (c *SMTPClient) GetCapabilities() protocol.Capabilities {
 	return c.capabilities
+}
+
+// IsEncrypted returns true if the connection is using TLS (either SMTPS or STARTTLS).
+func (c *SMTPClient) IsEncrypted() bool {
+	return c.tlsState != nil
+}
+
+// GetTLSState returns the stored TLS connection state (for SMTPS connections).
+func (c *SMTPClient) GetTLSState() *tls.ConnectionState {
+	return c.tlsState
 }
 
 // selectAuthMechanism selects the best authentication mechanism.

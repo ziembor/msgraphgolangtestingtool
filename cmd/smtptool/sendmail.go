@@ -15,7 +15,11 @@ import (
 
 // sendMail performs end-to-end email sending test.
 func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slogLogger *slog.Logger) error {
-	fmt.Printf("Sending test email via %s:%d...\n\n", config.Host, config.Port)
+	if config.SMTPS {
+		fmt.Printf("Sending test email via %s:%d (SMTPS)...\n\n", config.Host, config.Port)
+	} else {
+		fmt.Printf("Sending test email via %s:%d...\n\n", config.Host, config.Port)
+	}
 
 	// Write CSV header
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
@@ -43,7 +47,11 @@ func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	}
 	defer client.Close()
 
-	fmt.Printf("✓ Connected\n")
+	if config.SMTPS {
+		fmt.Printf("✓ Connected with SMTPS (implicit TLS)\n")
+	} else {
+		fmt.Printf("✓ Connected\n")
+	}
 
 	// Send EHLO
 	logger.LogDebug(slogLogger, "Sending EHLO command")
@@ -57,10 +65,17 @@ func sendMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		return err
 	}
 
-	// STARTTLS if on common SMTP submission ports and available
-	// Ports: 25 (SMTP), 587 (Submission), 2525/2526 (Alternative submission), 1025 (Testing/Alt)
+	// Handle TLS: either already established via SMTPS, or upgrade via STARTTLS
 	var tlsState *tls.ConnectionState
-	if (config.Port == 25 || config.Port == 587 || config.Port == 2525 || config.Port == 2526 || config.Port == 1025) && caps.SupportsSTARTTLS() {
+	if config.SMTPS {
+		// For SMTPS, TLS is already established
+		tlsState = client.GetTLSState()
+		if config.VerboseMode && tlsState != nil {
+			displayTLSCipherInfo(tlsState)
+		}
+	} else if (config.Port == 25 || config.Port == 587 || config.Port == 2525 || config.Port == 2526 || config.Port == 1025) && caps.SupportsSTARTTLS() {
+		// STARTTLS if on common SMTP submission ports and available
+		// Ports: 25 (SMTP), 587 (Submission), 2525/2526 (Alternative submission), 1025 (Testing/Alt)
 		fmt.Println("Upgrading to TLS...")
 		tlsVersion := smtptls.ParseTLSVersion(config.TLSVersion)
 		tlsConfig := &tls.Config{
