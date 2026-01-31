@@ -19,7 +19,9 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for testconnect
 	columns := []string{"Action", "Status", "Server", "Port", "Discovery_URL", "API_URL", "Capabilities", "Accounts", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewJMAPClient(config)
@@ -31,10 +33,12 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"error", err,
 			"host", config.Host)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			discoveryURL, "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("JMAP discovery failed: %w", err)
 	}
 
@@ -60,11 +64,13 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	}
 
 	// Log success to CSV
-	_ = csvLogger.WriteRow([]string{
+	if logErr := csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		discoveryURL, session.APIURL, strings.Join(caps, "; "),
 		fmt.Sprintf("%d", session.GetAccountCount()), "",
-	})
+	}); logErr != nil {
+		logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+	}
 
 	logger.LogInfo(slogLogger, "JMAP connectivity test completed",
 		"host", config.Host,

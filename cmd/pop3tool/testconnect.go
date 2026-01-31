@@ -16,7 +16,9 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for testconnect
 	columns := []string{"Action", "Status", "Server", "Port", "Connected", "Greeting", "Capabilities", "TLS_Version", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewPOP3Client(config)
@@ -28,10 +30,12 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"host", config.Host,
 			"port", config.Port)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"false", "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("connection failed: %w", err)
 	}
 	defer func() { _ = client.Quit() }()
@@ -97,10 +101,12 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 		"greeting", client.GetGreeting(),
 		"capabilities", capsStr)
 
-	_ = csvLogger.WriteRow([]string{
+	if logErr := csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		"true", client.GetGreeting(), capsStr, tlsVersion, "",
-	})
+	}); logErr != nil {
+		logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+	}
 
 	fmt.Println("\n✓ Connection test successful")
 	return nil

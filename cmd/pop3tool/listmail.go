@@ -16,7 +16,9 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for listmail
 	columns := []string{"Action", "Status", "Server", "Port", "Total_Messages", "Total_Size", "Message_Number", "Message_Size", "UIDL", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewPOP3Client(config)
@@ -28,10 +30,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"host", config.Host,
 			"port", config.Port)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("connection failed: %w", err)
 	}
 	defer func() { _ = client.Quit() }()
@@ -44,10 +48,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		if err := client.StartTLS(nil); err != nil {
 			logger.LogError(slogLogger, "STLS upgrade failed", "error", err)
 
-			_ = csvLogger.WriteRow([]string{
+			if logErr := csvLogger.WriteRow([]string{
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				"", "", "", "", "", fmt.Sprintf("STLS failed: %v", err),
-			})
+			}); logErr != nil {
+				logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+			}
 			return fmt.Errorf("STLS failed: %w", err)
 		}
 		fmt.Println("✓ TLS upgrade successful")
@@ -84,10 +90,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"error", authErr,
 			"username", maskUsername(config.Username))
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", "", fmt.Sprintf("Auth failed: %v", authErr),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("authentication failed: %w", authErr)
 	}
 	fmt.Println("✓ Authentication successful")
@@ -97,10 +105,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	if err != nil {
 		logger.LogError(slogLogger, "STAT command failed", "error", err)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", "", fmt.Sprintf("STAT failed: %v", err),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("STAT failed: %w", err)
 	}
 
@@ -110,10 +120,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 
 	if count == 0 {
 		fmt.Println("\nNo messages in mailbox")
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 			fmt.Sprintf("%d", count), fmt.Sprintf("%d", size), "", "", "", "",
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return nil
 	}
 
@@ -122,10 +134,12 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	if err != nil {
 		logger.LogError(slogLogger, "LIST command failed", "error", err)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			fmt.Sprintf("%d", count), fmt.Sprintf("%d", size), "", "", "", fmt.Sprintf("LIST failed: %v", err),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("LIST failed: %w", err)
 	}
 
@@ -161,11 +175,13 @@ func listMail(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		fmt.Printf("  %3d    %8d   %s\n", msg.Number, msg.Size, uidl)
 
 		// Log each message to CSV
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 			fmt.Sprintf("%d", count), fmt.Sprintf("%d", size),
 			fmt.Sprintf("%d", msg.Number), fmt.Sprintf("%d", msg.Size), uidl, "",
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 	}
 
 	if len(messages) > config.MaxMessages {

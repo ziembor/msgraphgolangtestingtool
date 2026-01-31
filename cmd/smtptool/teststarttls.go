@@ -24,12 +24,14 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 
 	// Write CSV header
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader([]string{
+		if err := csvLogger.WriteHeader([]string{
 			"Action", "Status", "Server", "Port", "STARTTLS_Available",
 			"TLS_Version", "Cipher_Suite", "Cert_Subject", "Cert_Issuer",
 			"Cert_Valid_From", "Cert_Valid_To", "Cert_SANs",
 			"Verification_Status", "Warnings", "Error",
-		})
+		}); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	// Create and connect client
@@ -38,10 +40,12 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 
 	if err := client.Connect(ctx); err != nil {
 		logger.LogError(slogLogger, "Connection failed", "error", err)
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"unknown", "", "", "", "", "", "", "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return err
 	}
 	defer client.Close()
@@ -57,10 +61,12 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 	caps, err := client.EHLO("smtptool.local")
 	if err != nil {
 		logger.LogError(slogLogger, "EHLO failed", "error", err)
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"unknown", "", "", "", "", "", "", "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return err
 	}
 
@@ -72,10 +78,12 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		if connState == nil {
 			msg := "SMTPS connection state not available"
 			logger.LogError(slogLogger, msg)
-			_ = csvLogger.WriteRow([]string{
+			if logErr := csvLogger.WriteRow([]string{
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				"N/A (SMTPS)", "", "", "", "", "", "", "", "", "", msg,
-			})
+			}); logErr != nil {
+				logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+			}
 			return errors.New(msg)
 		}
 		fmt.Printf("✓ SMTPS TLS handshake completed\n\n")
@@ -85,10 +93,12 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 			msg := "STARTTLS not advertised by server"
 			fmt.Printf("✗ %s\n", msg)
 			logger.LogWarn(slogLogger, msg)
-			_ = csvLogger.WriteRow([]string{
+			if logErr := csvLogger.WriteRow([]string{
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				"false", "", "", "", "", "", "", "", "", "", msg,
-			})
+			}); logErr != nil {
+				logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+			}
 			return errors.New(msg)
 		}
 
@@ -112,10 +122,12 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		connState, err = client.StartTLS(tlsConfig)
 		if err != nil {
 			logger.LogError(slogLogger, "STARTTLS handshake failed", "error", err)
-			_ = csvLogger.WriteRow([]string{
+			if logErr := csvLogger.WriteRow([]string{
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				"true", "", "", "", "", "", "", "", "", "", err.Error(),
-			})
+			}); logErr != nil {
+				logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+			}
 			return fmt.Errorf("TLS handshake failed: %w", err)
 		}
 
@@ -169,7 +181,7 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 	}
 
 	// Log to CSV
-	_ = csvLogger.WriteRow([]string{
+	if logErr := csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		starttlsAvailable,
 		tlsInfo.Version,
@@ -182,7 +194,9 @@ func testStartTLS(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		certInfo.VerificationStatus,
 		strings.Join(warnings, "; "),
 		"",
-	})
+	}); logErr != nil {
+		logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+	}
 
 	if config.SMTPS {
 		fmt.Println("\n✓ SMTPS test completed successfully")

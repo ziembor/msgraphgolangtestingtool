@@ -18,7 +18,9 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for testauth
 	columns := []string{"Action", "Status", "Server", "Port", "Username", "Auth_Method", "API_URL", "Accounts", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewJMAPClient(config)
@@ -36,10 +38,12 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"username", maskUsername(config.Username),
 			"auth_method", authMethod)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), authMethod, "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("JMAP authentication failed: %w", err)
 	}
 
@@ -82,11 +86,13 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	}
 
 	// Log success to CSV
-	_ = csvLogger.WriteRow([]string{
+	if logErr := csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		maskUsername(config.Username), authMethod, session.APIURL,
 		fmt.Sprintf("%d", session.GetAccountCount()), "",
-	})
+	}); logErr != nil {
+		logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+	}
 
 	logger.LogInfo(slogLogger, "JMAP authentication test completed",
 		"host", config.Host,

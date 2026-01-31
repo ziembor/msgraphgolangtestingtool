@@ -16,7 +16,9 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for listfolders
 	columns := []string{"Action", "Status", "Server", "Port", "Folder_Name", "Attributes", "Total_Messages", "Unseen", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewIMAPClient(config)
@@ -28,10 +30,12 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"host", config.Host,
 			"port", config.Port)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("connection failed: %w", err)
 	}
 	defer func() { _ = client.Logout() }()
@@ -72,10 +76,12 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"error", authErr,
 			"username", maskUsername(config.Username))
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", fmt.Sprintf("Auth failed: %v", authErr),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("authentication failed: %w", authErr)
 	}
 	fmt.Println("✓ Authentication successful")
@@ -86,10 +92,12 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	if err != nil {
 		logger.LogError(slogLogger, "LIST command failed", "error", err)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", fmt.Sprintf("LIST failed: %v", err),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("LIST failed: %w", err)
 	}
 
@@ -102,10 +110,12 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 		fmt.Printf("  %-34s %8d  %6d  %s\n", mb.Name, mb.Messages, mb.Unseen, attrs)
 
 		// Log each mailbox to CSV
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 			mb.Name, attrs, fmt.Sprintf("%d", mb.Messages), fmt.Sprintf("%d", mb.Unseen), "",
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 	}
 
 	logger.LogInfo(slogLogger, "List folders completed",

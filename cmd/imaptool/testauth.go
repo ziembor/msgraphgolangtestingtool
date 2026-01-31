@@ -16,7 +16,9 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for testauth
 	columns := []string{"Action", "Status", "Server", "Port", "Username", "Auth_Mechanisms", "Auth_Method", "Auth_Result", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		_ = csvLogger.WriteHeader(columns)
+		if err := csvLogger.WriteHeader(columns); err != nil {
+			logger.LogError(slogLogger, "Failed to write CSV header", "error", err)
+		}
 	}
 
 	client := NewIMAPClient(config)
@@ -28,10 +30,12 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"host", config.Host,
 			"port", config.Port)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), "", "", "FAILURE", err.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("connection failed: %w", err)
 	}
 	defer func() { _ = client.Logout() }()
@@ -85,10 +89,12 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"username", maskUsername(config.Username),
 			"method", authMethod)
 
-		_ = csvLogger.WriteRow([]string{
+		if logErr := csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), authMechanisms, authMethod, "FAILURE", authErr.Error(),
-		})
+		}); logErr != nil {
+			logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+		}
 		return fmt.Errorf("authentication failed: %w", authErr)
 	}
 
@@ -96,10 +102,12 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		"username", maskUsername(config.Username),
 		"method", authMethod)
 
-	_ = csvLogger.WriteRow([]string{
+	if logErr := csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		maskUsername(config.Username), authMechanisms, authMethod, "SUCCESS", "",
-	})
+	}); logErr != nil {
+		logger.LogError(slogLogger, "Failed to write CSV row", "error", logErr)
+	}
 
 	fmt.Println("\n✓ Authentication successful")
 	return nil
