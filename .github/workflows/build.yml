@@ -85,22 +85,25 @@ jobs:
       with:
         go-version: '1.24'
 
+    - name: Create bin directory
+      run: mkdir -p bin
+
     - name: Build all tools
       env:
         GOARCH: ${{ matrix.goarch }}
       run: |
-        go build -ldflags="-s -w" -o msgraphtool${{ matrix.ext }} ./cmd/msgraphtool
-        go build -ldflags="-s -w" -o smtptool${{ matrix.ext }} ./cmd/smtptool
-        go build -ldflags="-s -w" -o imaptool${{ matrix.ext }} ./cmd/imaptool
-        go build -ldflags="-s -w" -o pop3tool${{ matrix.ext }} ./cmd/pop3tool
-        go build -ldflags="-s -w" -o jmaptool${{ matrix.ext }} ./cmd/jmaptool
+        go build -ldflags="-s -w" -o bin/msgraphtool${{ matrix.ext }} ./cmd/msgraphtool
+        go build -ldflags="-s -w" -o bin/smtptool${{ matrix.ext }} ./cmd/smtptool
+        go build -ldflags="-s -w" -o bin/imaptool${{ matrix.ext }} ./cmd/imaptool
+        go build -ldflags="-s -w" -o bin/pop3tool${{ matrix.ext }} ./cmd/pop3tool
+        go build -ldflags="-s -w" -o bin/jmaptool${{ matrix.ext }} ./cmd/jmaptool
 
     - name: Verify build output (Windows)
       if: matrix.os == 'windows-latest'
       run: |
         $tools = @("msgraphtool", "smtptool", "imaptool", "pop3tool", "jmaptool")
         foreach ($tool in $tools) {
-          $binary = "$tool${{ matrix.ext }}"
+          $binary = "bin\$tool${{ matrix.ext }}"
           if (Test-Path $binary) {
             Write-Host "✓ $tool build successful"
             Get-Item $binary | Select-Object Name, Length
@@ -114,9 +117,9 @@ jobs:
       if: matrix.os != 'windows-latest'
       run: |
         for tool in msgraphtool smtptool imaptool pop3tool jmaptool; do
-          if [ -f "$tool${{ matrix.ext }}" ]; then
+          if [ -f "bin/$tool${{ matrix.ext }}" ]; then
             echo "✓ $tool build successful"
-            ls -lh "$tool${{ matrix.ext }}"
+            ls -lh "bin/$tool${{ matrix.ext }}"
           else
             echo "✗ $tool build failed"
             exit 1
@@ -126,14 +129,15 @@ jobs:
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path msgraphtool${{ matrix.ext }},smtptool${{ matrix.ext }},imaptool${{ matrix.ext }},pop3tool${{ matrix.ext }},jmaptool${{ matrix.ext }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
+        Compress-Archive -Path bin\msgraphtool${{ matrix.ext }},bin\smtptool${{ matrix.ext }},bin\imaptool${{ matrix.ext }},bin\pop3tool${{ matrix.ext }},bin\jmaptool${{ matrix.ext }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
         Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
         Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
 
     - name: Create ZIP archive (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: |
-        zip ${{ matrix.zip_name }} msgraphtool${{ matrix.ext }} smtptool${{ matrix.ext }} imaptool${{ matrix.ext }} pop3tool${{ matrix.ext }} jmaptool${{ matrix.ext }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
+        cd bin && zip ../${{ matrix.zip_name }} msgraphtool${{ matrix.ext }} smtptool${{ matrix.ext }} imaptool${{ matrix.ext }} pop3tool${{ matrix.ext }} jmaptool${{ matrix.ext }} && cd ..
+        zip -u ${{ matrix.zip_name }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
         ls -lh ${{ matrix.zip_name }}
 

@@ -1,14 +1,17 @@
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
-# Binaries for programs and plugins
+# Build output directory
+bin/
+
+# Binaries for programs and plugins (legacy, root-level builds)
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 
-# Tool-specific binaries
+# Tool-specific binaries (legacy)
 msgraphtool
 msgraphtool-linux
 integration_test_tool

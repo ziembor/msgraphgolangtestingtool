@@ -9,39 +9,42 @@ This document provides instructions for building both tools in this repository:
 1. **Go 1.24+**: [Download Go](https://golang.org/dl/)
 2. **Git**: [Download Git](https://git-scm.com/downloads)
 
-## Quick Build (Both Tools)
+## Quick Build (All Tools)
 
-The easiest way to build both tools is using the build script:
+The easiest way to build all tools is using the build script:
 
 ```powershell
 # From project root
 .\build-all.ps1
 ```
 
-This creates both executables in the project root:
-- `msgraphtool.exe`
-- `smtptool.exe`
+This creates all executables in the `bin/` directory:
+- `bin/msgraphtool.exe`
+- `bin/smtptool.exe`
+- `bin/imaptool.exe`
+- `bin/pop3tool.exe`
+- `bin/jmaptool.exe`
 
 ## Individual Tool Builds
 
 ### Microsoft Graph Tool
 
 ```powershell
-# Standard build
-go build -C cmd/msgraphtool -o msgraphtool.exe
+# Standard build (outputs to bin/)
+go build -C cmd/msgraphtool -o bin/msgraphtool.exe
 
 # Optimized build (recommended for production)
-go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphtool.exe
+go build -C cmd/msgraphtool -ldflags="-s -w" -o bin/msgraphtool.exe
 ```
 
 ### SMTP Tool
 
 ```powershell
-# Standard build
-go build -C cmd/smtptool -o smtptool.exe
+# Standard build (outputs to bin/)
+go build -C cmd/smtptool -o bin/smtptool.exe
 
 # Optimized build (recommended for production)
-go build -C cmd/smtptool -ldflags="-s -w" -o smtptool.exe
+go build -C cmd/smtptool -ldflags="-s -w" -o bin/smtptool.exe
 ```
 
 ## Cross-Platform Builds
@@ -53,12 +56,12 @@ Both tools support Windows, Linux, and macOS.
 ```powershell
 # Microsoft Graph Tool
 $env:GOOS="linux"; $env:GOARCH="amd64"
-go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphtool
+go build -C cmd/msgraphtool -ldflags="-s -w" -o bin/msgraphtool
 Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 
 # SMTP Tool
 $env:GOOS="linux"; $env:GOARCH="amd64"
-go build -C cmd/smtptool -ldflags="-s -w" -o smtptool
+go build -C cmd/smtptool -ldflags="-s -w" -o bin/smtptool
 Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 ```
 
@@ -69,12 +72,12 @@ Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 ```powershell
 # Microsoft Graph Tool
 $env:GOOS="darwin"; $env:GOARCH="amd64"
-go build -C cmd/msgraphtool -ldflags="-s -w" -o msgraphtool
+go build -C cmd/msgraphtool -ldflags="-s -w" -o bin/msgraphtool
 Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 
 # SMTP Tool (Apple Silicon)
 $env:GOOS="darwin"; $env:GOARCH="arm64"
-go build -C cmd/smtptool -ldflags="-s -w" -o smtptool
+go build -C cmd/smtptool -ldflags="-s -w" -o bin/smtptool
 Remove-Item Env:\GOOS; Remove-Item Env:\GOARCH
 ```
 
@@ -84,16 +87,20 @@ The repository now uses a modular structure:
 
 ```
 msgraphtool/
+├── bin/                 # Build output directory (executables)
 ├── cmd/
 │   ├── msgraphtool/     # Microsoft Graph tool source
-│   └── smtptool/        # SMTP tool source
+│   ├── smtptool/        # SMTP tool source
+│   ├── imaptool/        # IMAP tool source
+│   ├── pop3tool/        # POP3 tool source
+│   └── jmaptool/        # JMAP tool source
 ├── internal/
 │   ├── common/          # Shared packages (logger, retry, version, validation)
 │   ├── msgraph/         # Graph-specific code
 │   └── smtp/            # SMTP-specific code (protocol, TLS, Exchange)
 ├── src/
 │   └── VERSION          # Version file (embedded at build time)
-├── build-all.ps1        # Build script for both tools
+├── build-all.ps1        # Build script for all tools
 └── go.mod               # Root module
 ```
 
@@ -106,7 +113,9 @@ The old build method is deprecated but still works temporarily:
 go build -C src -o msgraphtool.exe
 ```
 
-**Migration:** Update your build scripts to use `go build -C cmd/msgraphtool` instead.
+**Migration:** Update your build scripts to:
+1. Use `go build -C cmd/msgraphtool` instead of `go build -C src`
+2. Output to `bin/` directory: `-o bin/msgraphtool.exe`
 
 ## Verification
 
@@ -114,10 +123,10 @@ After building, verify the executables:
 
 ```powershell
 # Check versions
-.\msgraphtool.exe -version
-.\smtptool.exe -version
+.\bin\msgraphtool.exe -version
+.\bin\smtptool.exe -version
 
-# Both should display the same version from src/VERSION
+# All tools should display the same version from internal/common/version/version.go
 ```
 
 ## Release Process

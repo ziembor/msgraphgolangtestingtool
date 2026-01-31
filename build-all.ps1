@@ -23,6 +23,13 @@ Write-ColorOutput "`n═══════════════════�
 Write-ColorOutput "  gomailtesttool Suite - Build Script" "Cyan"
 Write-ColorOutput "═══════════════════════════════════════════════════════════`n" "Cyan"
 
+# Ensure bin directory exists
+$binDir = Join-Path $PSScriptRoot "bin"
+if (-not (Test-Path $binDir)) {
+    New-Item -ItemType Directory -Path $binDir | Out-Null
+    Write-ColorOutput "Created bin/ directory`n" "Yellow"
+}
+
 # Read version from version.go
 $versionFile = Join-Path $PSScriptRoot "internal" "common" "version" "version.go"
 if (-not (Test-Path $versionFile)) {
@@ -55,7 +62,7 @@ foreach ($tool in $tools) {
 
     try {
         $buildDir = Join-Path $PSScriptRoot "cmd" $tool.Name
-        $outputFile = Join-Path $PSScriptRoot "$($tool.Name).exe"
+        $outputFile = Join-Path $binDir "$($tool.Name).exe"
 
         Push-Location $buildDir
         if ($Verbose) {
@@ -83,7 +90,7 @@ if (-not $SkipTests) {
 
     foreach ($tool in $tools) {
         Write-ColorOutput "  Testing $($tool.Name) version..." "Gray"
-        $exe = Join-Path $PSScriptRoot "$($tool.Name).exe"
+        $exe = Join-Path $binDir "$($tool.Name).exe"
         $toolVersion = & $exe -version 2>&1
         if ($toolVersion -match $version) {
             Write-ColorOutput "    ✓ Version correct: $version" "Green"
@@ -98,16 +105,16 @@ Write-ColorOutput "`n═══════════════════�
 Write-ColorOutput "  Build Complete!" "Green"
 Write-ColorOutput "═══════════════════════════════════════════════════════════" "Cyan"
 
-Write-ColorOutput "`nBuilt executables:" "White"
+Write-ColorOutput "`nBuilt executables in bin/:" "White"
 foreach ($tool in $tools) {
-    Write-ColorOutput "  • $($tool.Name).exe - $($tool.Desc)" "White"
+    Write-ColorOutput "  • bin\$($tool.Name).exe - $($tool.Desc)" "White"
 }
 
 Write-ColorOutput "`nUsage examples:" "Yellow"
-Write-ColorOutput "  .\msgraphtool.exe -version" "Gray"
-Write-ColorOutput "  .\smtptool.exe -action testconnect -host smtp.example.com -port 25" "Gray"
-Write-ColorOutput "  .\imaptool.exe -action testconnect -host imap.gmail.com -imaps" "Gray"
-Write-ColorOutput "  .\pop3tool.exe -action testconnect -host pop.gmail.com -pop3s" "Gray"
-Write-ColorOutput "  .\jmaptool.exe -action testconnect -host jmap.fastmail.com`n" "Gray"
+Write-ColorOutput "  .\bin\msgraphtool.exe -version" "Gray"
+Write-ColorOutput "  .\bin\smtptool.exe -action testconnect -host smtp.example.com -port 25" "Gray"
+Write-ColorOutput "  .\bin\imaptool.exe -action testconnect -host imap.gmail.com -imaps" "Gray"
+Write-ColorOutput "  .\bin\pop3tool.exe -action testconnect -host pop.gmail.com -pop3s" "Gray"
+Write-ColorOutput "  .\bin\jmaptool.exe -action testconnect -host jmap.fastmail.com`n" "Gray"
 
 Write-ColorOutput "For more information, see BUILD.md and tool-specific READMEs`n" "Cyan"
