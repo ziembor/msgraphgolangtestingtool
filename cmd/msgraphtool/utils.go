@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"msgraphtool/internal/common/logger"
 	"msgraphtool/internal/common/retry"
@@ -188,45 +187,6 @@ func enrichGraphAPIError(err error, csvLogger logger.Logger, operation string) e
 	}
 
 	return err
-}
-
-// isRetryableGraphError determines if a Graph API error is retryable.
-// Returns true for network timeouts, Graph API throttling (429), and service
-// unavailability (503) errors. This is a Graph-specific wrapper around the
-// generic retry logic.
-func isRetryableGraphError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for Azure SDK response errors (429, 503, 504)
-	var respErr *azcore.ResponseError
-	if errors.As(err, &respErr) {
-		if respErr.StatusCode == 429 || respErr.StatusCode == 503 || respErr.StatusCode == 504 {
-			return true
-		}
-	}
-
-	// Fall back to generic network error checks
-	errMsg := strings.ToLower(err.Error())
-	transientPatterns := []string{
-		"timeout",
-		"connection reset",
-		"connection refused",
-		"temporary failure",
-		"try again",
-		"i/o timeout",
-		"no such host",
-		"network is unreachable",
-	}
-
-	for _, pattern := range transientPatterns {
-		if strings.Contains(errMsg, pattern) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // retryWithBackoff is a wrapper around the common retry package for backward compatibility

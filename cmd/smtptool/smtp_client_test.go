@@ -85,7 +85,7 @@ func TestDebugLogCommand(t *testing.T) {
 
 			// Read captured output
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify output
@@ -195,7 +195,7 @@ func TestDebugLogResponse(t *testing.T) {
 
 			// Read captured output
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify output
@@ -280,7 +280,7 @@ func TestDebugLogMessage(t *testing.T) {
 
 			// Read captured output
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify output
@@ -369,7 +369,7 @@ func TestDebugLogging_MultilineResponseFormatting(t *testing.T) {
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify multiline format
@@ -807,7 +807,7 @@ func TestSMTPClient_GetCapabilities(t *testing.T) {
 	t.Run("Empty capabilities before EHLO", func(t *testing.T) {
 		client := &SMTPClient{}
 		caps := client.GetCapabilities()
-		if caps != nil && len(caps) > 0 {
+		if len(caps) > 0 {
 			t.Errorf("GetCapabilities() = %v, want nil or empty", caps)
 		}
 	})

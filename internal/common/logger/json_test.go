@@ -243,8 +243,8 @@ func TestJSONLogger_Append(t *testing.T) {
 	}
 	defer os.Remove(logger1.file.Name())
 
-	logger1.WriteHeader([]string{"ID"})
-	logger1.WriteRow([]string{"1"})
+	_ = logger1.WriteHeader([]string{"ID"})
+	_ = logger1.WriteRow([]string{"1"})
 	logger1.Close()
 
 	// Create second logger (should append)
@@ -254,8 +254,8 @@ func TestJSONLogger_Append(t *testing.T) {
 	}
 	defer logger2.Close()
 
-	logger2.WriteHeader([]string{"ID"})
-	logger2.WriteRow([]string{"2"})
+	_ = logger2.WriteHeader([]string{"ID"})
+	_ = logger2.WriteRow([]string{"2"})
 	logger2.Close()
 
 	// Verify both rows exist
@@ -295,8 +295,8 @@ func TestJSONLogger_ShouldWriteHeader(t *testing.T) {
 		}
 		defer os.Remove(logger.file.Name())
 
-		logger.WriteHeader([]string{"ID"})
-		logger.WriteRow([]string{"1"})
+		_ = logger.WriteHeader([]string{"ID"})
+		_ = logger.WriteRow([]string{"1"})
 		logger.Close()
 
 		// Reopen
@@ -325,7 +325,7 @@ func TestJSONLogger_PeriodicFlushing(t *testing.T) {
 	defer os.Remove(logger.file.Name())
 
 	// Write header
-	logger.WriteHeader([]string{"ID"})
+	_ = logger.WriteHeader([]string{"ID"})
 
 	// Write rows without closing to test periodic flushing
 	for i := 0; i < 15; i++ {

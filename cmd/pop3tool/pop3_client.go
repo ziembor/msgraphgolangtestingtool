@@ -367,11 +367,11 @@ func (c *POP3Client) Quit() error {
 	}
 
 	// Send QUIT command (ignore errors)
-	c.conn.Write([]byte(protocol.QUIT()))
+	_, _ = c.conn.Write([]byte(protocol.QUIT()))
 
 	// Read response (ignore errors)
-	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	protocol.ReadResponse(c.reader)
+	_ = c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _ = protocol.ReadResponse(c.reader)
 
 	return c.conn.Close()
 }

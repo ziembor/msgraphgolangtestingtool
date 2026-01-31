@@ -37,7 +37,7 @@ func TLSVersionString(version uint16) string {
 		return "TLS 1.2"
 	case tls.VersionTLS13:
 		return "TLS 1.3"
-	case tls.VersionSSL30:
+	case 0x0300: // SSL 3.0 - use raw value instead of deprecated tls.VersionSSL30
 		return "SSL 3.0"
 	default:
 		return fmt.Sprintf("Unknown (0x%04X)", version)

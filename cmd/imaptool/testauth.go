@@ -16,7 +16,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for testauth
 	columns := []string{"Action", "Status", "Server", "Port", "Username", "Auth_Mechanisms", "Auth_Method", "Auth_Result", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewIMAPClient(config)
@@ -28,13 +28,13 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"host", config.Host,
 			"port", config.Port)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), "", "", "FAILURE", err.Error(),
 		})
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer client.Logout()
+	defer func() { _ = client.Logout() }()
 
 	fmt.Printf("✓ Connected to %s:%d\n", config.Host, config.Port)
 
@@ -85,7 +85,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"username", maskUsername(config.Username),
 			"method", authMethod)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), authMechanisms, authMethod, "FAILURE", authErr.Error(),
 		})
@@ -96,7 +96,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		"username", maskUsername(config.Username),
 		"method", authMethod)
 
-	csvLogger.WriteRow([]string{
+	_ = csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		maskUsername(config.Username), authMechanisms, authMethod, "SUCCESS", "",
 	})

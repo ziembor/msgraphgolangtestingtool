@@ -157,10 +157,7 @@ func run() error {
 	}
 
 	// 6. Initialize services (CSV logging and proxy)
-	csvLogger, err := initializeServices(config)
-	if err != nil {
-		// Error already logged in initializeServices, continue without logger
-	}
+	csvLogger, _ := initializeServices(config)
 	if csvLogger != nil {
 		defer csvLogger.Close()
 	}

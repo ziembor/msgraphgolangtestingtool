@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"mime"
 	"os"
-	"msgraphtool/internal/common/logger"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +14,7 @@ import (
 	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
+	"msgraphtool/internal/common/logger"
 )
 
 // executeAction dispatches to the appropriate action handler based on config.Action.
@@ -133,7 +132,7 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 	// Always write to CSV logger regardless of output format
 	if logger != nil {
 		if eventCount == 0 {
-			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, "No events found (0 events)", "N/A"})
+			_ = logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, "No events found (0 events)", "N/A"})
 		} else {
 			for _, event := range events {
 				subject := "N/A"
@@ -144,9 +143,9 @@ func listEvents(ctx context.Context, client *msgraphsdk.GraphServiceClient, mail
 				if event.GetId() != nil {
 					id = *event.GetId()
 				}
-				logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
+				_ = logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, subject, id})
 			}
-			logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
+			_ = logger.WriteRow([]string{ActionGetEvents, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d event(s)", eventCount), "SUMMARY"})
 		}
 	}
 
@@ -236,7 +235,7 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 		if htmlContent != "" {
 			bodyType = "HTML"
 		}
-		logger.WriteRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject, bodyType, fmt.Sprintf("%d", attachmentCount)})
+		_ = logger.WriteRow([]string{ActionSendMail, status, senderMailbox, toStr, ccStr, bccStr, subject, bodyType, fmt.Sprintf("%d", attachmentCount)})
 	}
 }
 
@@ -311,7 +310,7 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 
 	// Write to CSV
 	if logger != nil {
-		logger.WriteRow([]string{ActionSendInvite, status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
+		_ = logger.WriteRow([]string{ActionSendInvite, status, mailbox, subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), eventID})
 	}
 }
 
@@ -402,7 +401,7 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 	// Always write to CSV logger
 	if logger != nil {
 		if messageCount == 0 {
-			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
+			_ = logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A", "N/A", "N/A"})
 		} else {
 			for _, message := range messages {
 				sender := "N/A"
@@ -430,9 +429,9 @@ func listInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mailb
 					receivedDate = message.GetReceivedDateTime().Format("2006-01-02 15:04:05")
 				}
 
-				logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
+				_ = logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, subject, sender, recipientStr, receivedDate})
 			}
-			logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
+			_ = logger.WriteRow([]string{ActionGetInbox, StatusSuccess, mailbox, fmt.Sprintf("Retrieved %d message(s)", messageCount), "SUMMARY", "SUMMARY", "SUMMARY"})
 		}
 	}
 
@@ -493,7 +492,7 @@ func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClien
 		enrichedErr := enrichGraphAPIError(err, logger, "checkAvailability")
 		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %v", enrichedErr), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
 		if logger != nil {
-			logger.WriteRow(csvRow)
+			_ = logger.WriteRow(csvRow)
 		}
 		return fmt.Errorf("error checking availability for %s: %w", recipient, enrichedErr)
 	}
@@ -505,7 +504,7 @@ func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClien
 		errMsg := "no schedule information returned"
 		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %s", errMsg), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
 		if logger != nil {
-			logger.WriteRow(csvRow)
+			_ = logger.WriteRow(csvRow)
 		}
 		return fmt.Errorf("no schedule information returned")
 	}
@@ -521,7 +520,7 @@ func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClien
 		errMsg := "empty availability view returned"
 		csvRow := []string{ActionGetSchedule, fmt.Sprintf("Error: %s", errMsg), mailbox, recipient, checkDateTime.Format(time.RFC3339), "N/A"}
 		if logger != nil {
-			logger.WriteRow(csvRow)
+			_ = logger.WriteRow(csvRow)
 		}
 		return fmt.Errorf("empty availability view returned")
 	}
@@ -548,7 +547,7 @@ func checkAvailability(ctx context.Context, client *msgraphsdk.GraphServiceClien
 	// Log to CSV
 	if logger != nil {
 		csvRow := []string{ActionGetSchedule, StatusSuccess, mailbox, recipient, checkDateTime.Format(time.RFC3339), availabilityView}
-		logger.WriteRow(csvRow)
+		_ = logger.WriteRow(csvRow)
 	}
 
 	return nil
@@ -599,7 +598,7 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 			fmt.Println("No messages found.")
 		}
 		if logger != nil {
-			logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A"})
+			_ = logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, "No messages found (0 messages)", "N/A"})
 		}
 		return nil
 	}
@@ -632,7 +631,7 @@ func exportInbox(ctx context.Context, client *msgraphsdk.GraphServiceClient, mai
 		fmt.Printf("Successfully exported %d/%d messages.\n", successCount, messageCount)
 	}
 	if logger != nil {
-		logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, fmt.Sprintf("Exported %d/%d messages", successCount, messageCount), exportDir})
+		_ = logger.WriteRow([]string{ActionExportInbox, StatusSuccess, mailbox, fmt.Sprintf("Exported %d/%d messages", successCount, messageCount), exportDir})
 	}
 
 	return nil
@@ -682,7 +681,7 @@ func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient,
 			fmt.Printf("No message found with Internet Message ID: %s\n", messageID)
 		}
 		if logger != nil {
-			logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Message not found", messageID})
+			_ = logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Message not found", messageID})
 		}
 		return nil
 	}
@@ -711,7 +710,7 @@ func searchAndExport(ctx context.Context, client *msgraphsdk.GraphServiceClient,
 			fmt.Printf("Successfully exported message: %s\n", *message.GetSubject())
 		}
 		if logger != nil {
-			logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Exported successfully", *message.GetId()})
+			_ = logger.WriteRow([]string{ActionSearchAndExport, StatusSuccess, mailbox, "Exported successfully", *message.GetId()})
 		}
 	}
 
@@ -889,11 +888,6 @@ func createFileAttachments(filePaths []string, config *Config) ([]models.Attachm
 	}
 
 	return attachments, nil
-}
-
-// getAttachmentContentBase64 returns base64 encoded file content (for debugging/verbose)
-func getAttachmentContentBase64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
 }
 
 func createRecipients(emails []string) []models.Recipientable {

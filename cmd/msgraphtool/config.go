@@ -353,7 +353,7 @@ func applyEnvVarsToSlice(flagName string, slice *stringSlice, envName string) {
 	// If flag was not provided via command line, check environment variable
 	if !flagProvided {
 		if envValue := os.Getenv(envName); envValue != "" {
-			slice.Set(envValue)
+			_ = slice.Set(envValue)
 		}
 	}
 }

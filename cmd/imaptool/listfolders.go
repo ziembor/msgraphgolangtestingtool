@@ -16,7 +16,7 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for listfolders
 	columns := []string{"Action", "Status", "Server", "Port", "Folder_Name", "Attributes", "Total_Messages", "Unseen", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewIMAPClient(config)
@@ -28,13 +28,13 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"host", config.Host,
 			"port", config.Port)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", err.Error(),
 		})
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer client.Logout()
+	defer func() { _ = client.Logout() }()
 
 	fmt.Printf("✓ Connected to %s:%d\n", config.Host, config.Port)
 
@@ -72,7 +72,7 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"error", authErr,
 			"username", maskUsername(config.Username))
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", fmt.Sprintf("Auth failed: %v", authErr),
 		})
@@ -86,7 +86,7 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	if err != nil {
 		logger.LogError(slogLogger, "LIST command failed", "error", err)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"", "", "", "", fmt.Sprintf("LIST failed: %v", err),
 		})
@@ -102,7 +102,7 @@ func listFolders(ctx context.Context, config *Config, csvLogger logger.Logger, s
 		fmt.Printf("  %-34s %8d  %6d  %s\n", mb.Name, mb.Messages, mb.Unseen, attrs)
 
 		// Log each mailbox to CSV
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 			mb.Name, attrs, fmt.Sprintf("%d", mb.Messages), fmt.Sprintf("%d", mb.Unseen), "",
 		})

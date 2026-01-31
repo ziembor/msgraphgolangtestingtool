@@ -395,7 +395,7 @@ func (c *SMTPClient) Close() error {
 		// Send QUIT
 		cmd := protocol.QUIT()
 		c.debugLogCommand(cmd)
-		c.conn.Write([]byte(cmd))
+		_, _ = c.conn.Write([]byte(cmd))
 		// Note: We don't wait for the response as the connection is being closed
 		c.debugLogMessage("<<< 221 Closing connection")
 		return c.conn.Close()

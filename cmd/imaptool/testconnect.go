@@ -16,7 +16,7 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for testconnect
 	columns := []string{"Action", "Status", "Server", "Port", "Connected", "Capabilities", "TLS_Version", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewIMAPClient(config)
@@ -28,13 +28,13 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"host", config.Host,
 			"port", config.Port)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			"false", "", "", err.Error(),
 		})
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer client.Logout()
+	defer func() { _ = client.Logout() }()
 
 	fmt.Printf("✓ Connected to %s:%d\n", config.Host, config.Port)
 
@@ -88,27 +88,11 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 		"port", config.Port,
 		"capabilities", capsStr)
 
-	csvLogger.WriteRow([]string{
+	_ = csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		"true", capsStr, tlsVersion, "",
 	})
 
 	fmt.Println("\n✓ Connection test successful")
 	return nil
-}
-
-// getTLSVersionString converts TLS version constant to string.
-func getTLSVersionString(version uint16) string {
-	switch version {
-	case 0x0304:
-		return "1.3"
-	case 0x0303:
-		return "1.2"
-	case 0x0302:
-		return "1.1"
-	case 0x0301:
-		return "1.0"
-	default:
-		return fmt.Sprintf("unknown (0x%04x)", version)
-	}
 }

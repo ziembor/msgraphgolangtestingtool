@@ -16,7 +16,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for testauth
 	columns := []string{"Action", "Status", "Server", "Port", "Username", "Auth_Method", "Auth_Result", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewPOP3Client(config)
@@ -28,13 +28,13 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"host", config.Host,
 			"port", config.Port)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), "", "FAILURE", err.Error(),
 		})
 		return fmt.Errorf("connection failed: %w", err)
 	}
-	defer client.Quit()
+	defer func() { _ = client.Quit() }()
 
 	fmt.Printf("✓ Connected to %s:%d\n", config.Host, config.Port)
 
@@ -44,7 +44,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		if err := client.StartTLS(nil); err != nil {
 			logger.LogError(slogLogger, "STLS upgrade failed", "error", err)
 
-			csvLogger.WriteRow([]string{
+			_ = csvLogger.WriteRow([]string{
 				config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 				maskUsername(config.Username), "", "FAILURE", fmt.Sprintf("STLS failed: %v", err),
 			})
@@ -87,7 +87,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"username", maskUsername(config.Username),
 			"method", authMethod)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), authMethod, "FAILURE", authErr.Error(),
 		})
@@ -98,7 +98,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 		"username", maskUsername(config.Username),
 		"method", authMethod)
 
-	csvLogger.WriteRow([]string{
+	_ = csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		maskUsername(config.Username), authMethod, "SUCCESS", "",
 	})

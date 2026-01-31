@@ -231,7 +231,7 @@ func BenchmarkValidateProxyURL(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, url := range urls {
-			ValidateProxyURL(url)
+			_ = ValidateProxyURL(url)
 		}
 	}
 }

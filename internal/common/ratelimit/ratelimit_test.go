@@ -128,7 +128,7 @@ func TestLimiter_Wait_ContextCanceled(t *testing.T) {
 	defer cancel()
 
 	// First request passes
-	limiter.Wait(context.Background())
+	_ = limiter.Wait(context.Background())
 
 	// Second request should be canceled by context
 	err := limiter.Wait(ctx)
@@ -292,7 +292,7 @@ func BenchmarkLimiter_Wait(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		limiter.Wait(ctx)
+		_ = limiter.Wait(ctx)
 	}
 }
 
