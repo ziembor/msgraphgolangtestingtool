@@ -19,7 +19,7 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	// CSV columns for testconnect
 	columns := []string{"Action", "Status", "Server", "Port", "Discovery_URL", "API_URL", "Capabilities", "Accounts", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewJMAPClient(config)
@@ -31,7 +31,7 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 			"error", err,
 			"host", config.Host)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			discoveryURL, "", "", "", err.Error(),
 		})
@@ -60,7 +60,7 @@ func testConnect(ctx context.Context, config *Config, csvLogger logger.Logger, s
 	}
 
 	// Log success to CSV
-	csvLogger.WriteRow([]string{
+	_ = csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		discoveryURL, session.APIURL, strings.Join(caps, "; "),
 		fmt.Sprintf("%d", session.GetAccountCount()), "",

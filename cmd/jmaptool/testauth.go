@@ -18,7 +18,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	// CSV columns for testauth
 	columns := []string{"Action", "Status", "Server", "Port", "Username", "Auth_Method", "API_URL", "Accounts", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewJMAPClient(config)
@@ -36,7 +36,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 			"username", maskUsername(config.Username),
 			"auth_method", authMethod)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, fmt.Sprintf("%d", config.Port),
 			maskUsername(config.Username), authMethod, "", "", err.Error(),
 		})
@@ -82,7 +82,7 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 	}
 
 	// Log success to CSV
-	csvLogger.WriteRow([]string{
+	_ = csvLogger.WriteRow([]string{
 		config.Action, "SUCCESS", config.Host, fmt.Sprintf("%d", config.Port),
 		maskUsername(config.Username), authMethod, session.APIURL,
 		fmt.Sprintf("%d", session.GetAccountCount()), "",

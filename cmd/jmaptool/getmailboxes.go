@@ -18,7 +18,7 @@ func getMailboxes(ctx context.Context, config *Config, csvLogger logger.Logger, 
 	// CSV columns for getmailboxes
 	columns := []string{"Action", "Status", "Server", "Mailbox_Id", "Mailbox_Name", "Role", "Total_Emails", "Unread_Emails", "Parent_Id", "Error"}
 	if shouldWrite, _ := csvLogger.ShouldWriteHeader(); shouldWrite {
-		csvLogger.WriteHeader(columns)
+		_ = csvLogger.WriteHeader(columns)
 	}
 
 	client := NewJMAPClient(config)
@@ -30,7 +30,7 @@ func getMailboxes(ctx context.Context, config *Config, csvLogger logger.Logger, 
 			"error", err,
 			"host", config.Host)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, "", "", "", "", "", "", err.Error(),
 		})
 		return fmt.Errorf("JMAP discovery failed: %w", err)
@@ -46,7 +46,7 @@ func getMailboxes(ctx context.Context, config *Config, csvLogger logger.Logger, 
 			"error", err,
 			"host", config.Host)
 
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "FAILURE", config.Host, "", "", "", "", "", "", err.Error(),
 		})
 		return fmt.Errorf("failed to get mailboxes: %w", err)
@@ -68,7 +68,7 @@ func getMailboxes(ctx context.Context, config *Config, csvLogger logger.Logger, 
 		if mb.ParentId != nil {
 			parentId = string(*mb.ParentId)
 		}
-		csvLogger.WriteRow([]string{
+		_ = csvLogger.WriteRow([]string{
 			config.Action, "SUCCESS", config.Host,
 			string(mb.Id), mb.Name, role,
 			fmt.Sprintf("%d", mb.TotalEmails), fmt.Sprintf("%d", mb.UnreadEmails),
