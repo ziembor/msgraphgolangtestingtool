@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
-# Build script for both msgraphtool and smtptool
-# Builds optimized binaries for both tools with version embedding
+# Build script for all gomailtesttool binaries
+# Builds optimized binaries for all 5 tools with version embedding
 
 param(
     [switch]$Verbose,
@@ -20,7 +20,7 @@ function Write-ColorOutput {
 
 # Header
 Write-ColorOutput "`n═══════════════════════════════════════════════════════════" "Cyan"
-Write-ColorOutput "  Microsoft Graph & SMTP Tools - Build Script" "Cyan"
+Write-ColorOutput "  gomailtesttool Suite - Build Script" "Cyan"
 Write-ColorOutput "═══════════════════════════════════════════════════════════`n" "Cyan"
 
 # Read version from version.go
@@ -38,84 +38,58 @@ if ($versionContent -match 'const Version = "([^"]+)"') {
 }
 Write-ColorOutput "Version: $version`n" "Yellow"
 
-# Build Microsoft Graph Tool
-Write-ColorOutput "Building Microsoft Graph Tool..." "Cyan"
-Write-ColorOutput "  Location: cmd/msgraphtool" "Gray"
-Write-ColorOutput "  Output:   msgraphtool.exe`n" "Gray"
+# Define tools to build
+$tools = @(
+    @{ Name = "msgraphtool"; Desc = "Microsoft Graph API tool" },
+    @{ Name = "smtptool"; Desc = "SMTP connectivity testing" },
+    @{ Name = "imaptool"; Desc = "IMAP server testing" },
+    @{ Name = "pop3tool"; Desc = "POP3 server testing" },
+    @{ Name = "jmaptool"; Desc = "JMAP protocol testing" }
+)
 
-try {
-    $buildDir = Join-Path $PSScriptRoot "cmd" "msgraphtool"
-    $outputFile = Join-Path $PSScriptRoot "msgraphtool.exe"
+# Build each tool
+foreach ($tool in $tools) {
+    Write-ColorOutput "Building $($tool.Name)..." "Cyan"
+    Write-ColorOutput "  Location: cmd/$($tool.Name)" "Gray"
+    Write-ColorOutput "  Output:   $($tool.Name).exe`n" "Gray"
 
-    Push-Location $buildDir
-    if ($Verbose) {
-        go build -v -ldflags="-s -w" -o $outputFile
-    } else {
-        go build -ldflags="-s -w" -o $outputFile
+    try {
+        $buildDir = Join-Path $PSScriptRoot "cmd" $tool.Name
+        $outputFile = Join-Path $PSScriptRoot "$($tool.Name).exe"
+
+        Push-Location $buildDir
+        if ($Verbose) {
+            go build -v -ldflags="-s -w" -o $outputFile
+        } else {
+            go build -ldflags="-s -w" -o $outputFile
+        }
+        Pop-Location
+
+        if ($LASTEXITCODE -eq 0) {
+            $size = (Get-Item $outputFile).Length / 1MB
+            Write-ColorOutput "  ✓ Build successful (Size: $($size.ToString('N2')) MB)" "Green"
+        } else {
+            throw "Build failed with exit code $LASTEXITCODE"
+        }
+    } catch {
+        Write-ColorOutput "  ✗ Build failed: $_" "Red"
+        exit 1
     }
-    Pop-Location
-
-    if ($LASTEXITCODE -eq 0) {
-        $size = (Get-Item $outputFile).Length / 1MB
-        Write-ColorOutput "  ✓ Build successful (Size: $($size.ToString('N2')) MB)" "Green"
-    } else {
-        throw "Build failed with exit code $LASTEXITCODE"
-    }
-} catch {
-    Write-ColorOutput "  ✗ Build failed: $_" "Red"
-    exit 1
-}
-
-# Build SMTP Tool
-Write-ColorOutput "`nBuilding SMTP Connectivity Tool..." "Cyan"
-Write-ColorOutput "  Location: cmd/smtptool" "Gray"
-Write-ColorOutput "  Output:   smtptool.exe`n" "Gray"
-
-try {
-    $buildDir = Join-Path $PSScriptRoot "cmd" "smtptool"
-    $outputFile = Join-Path $PSScriptRoot "smtptool.exe"
-
-    Push-Location $buildDir
-    if ($Verbose) {
-        go build -v -ldflags="-s -w" -o $outputFile
-    } else {
-        go build -ldflags="-s -w" -o $outputFile
-    }
-    Pop-Location
-
-    if ($LASTEXITCODE -eq 0) {
-        $size = (Get-Item $outputFile).Length / 1MB
-        Write-ColorOutput "  ✓ Build successful (Size: $($size.ToString('N2')) MB)" "Green"
-    } else {
-        throw "Build failed with exit code $LASTEXITCODE"
-    }
-} catch {
-    Write-ColorOutput "  ✗ Build failed: $_" "Red"
-    exit 1
 }
 
 # Run tests (optional)
 if (-not $SkipTests) {
-    Write-ColorOutput "`nRunning tests..." "Cyan"
+    Write-ColorOutput "`nRunning version tests..." "Cyan"
 
-    # Test Graph tool version
-    Write-ColorOutput "  Testing msgraphtool version..." "Gray"
-    $graphExe = Join-Path $PSScriptRoot "msgraphtool.exe"
-    $graphVersion = & $graphExe -version
-    if ($graphVersion -match $version) {
-        Write-ColorOutput "    ✓ Version correct: $version" "Green"
-    } else {
-        Write-ColorOutput "    ⚠ Version mismatch (expected: $version)" "Yellow"
-    }
-
-    # Test SMTP tool version
-    Write-ColorOutput "  Testing smtptool version..." "Gray"
-    $smtpExe = Join-Path $PSScriptRoot "smtptool.exe"
-    $smtpVersion = & $smtpExe -version
-    if ($smtpVersion -match $version) {
-        Write-ColorOutput "    ✓ Version correct: $version" "Green"
-    } else {
-        Write-ColorOutput "    ⚠ Version mismatch (expected: $version)" "Yellow"
+    foreach ($tool in $tools) {
+        Write-ColorOutput "  Testing $($tool.Name) version..." "Gray"
+        $exe = Join-Path $PSScriptRoot "$($tool.Name).exe"
+        $toolVersion = & $exe -version 2>&1
+        if ($toolVersion -match $version) {
+            Write-ColorOutput "    ✓ Version correct: $version" "Green"
+        } else {
+            Write-ColorOutput "    ⚠ Version mismatch (expected: $version)" "Yellow"
+        }
     }
 }
 
@@ -125,12 +99,15 @@ Write-ColorOutput "  Build Complete!" "Green"
 Write-ColorOutput "═══════════════════════════════════════════════════════════" "Cyan"
 
 Write-ColorOutput "`nBuilt executables:" "White"
-Write-ColorOutput "  • msgraphtool.exe - Microsoft Graph API tool" "White"
-Write-ColorOutput "  • smtptool.exe                  - SMTP connectivity testing tool" "White"
+foreach ($tool in $tools) {
+    Write-ColorOutput "  • $($tool.Name).exe - $($tool.Desc)" "White"
+}
 
 Write-ColorOutput "`nUsage examples:" "Yellow"
 Write-ColorOutput "  .\msgraphtool.exe -version" "Gray"
 Write-ColorOutput "  .\smtptool.exe -action testconnect -host smtp.example.com -port 25" "Gray"
-Write-ColorOutput "  .\smtptool.exe -action teststarttls -host smtp.example.com -port 587`n" "Gray"
+Write-ColorOutput "  .\imaptool.exe -action testconnect -host imap.gmail.com -imaps" "Gray"
+Write-ColorOutput "  .\pop3tool.exe -action testconnect -host pop.gmail.com -pop3s" "Gray"
+Write-ColorOutput "  .\jmaptool.exe -action testconnect -host jmap.fastmail.com`n" "Gray"
 
-Write-ColorOutput "For more information, see BUILD.md and SMTP_TOOL_README.md`n" "Cyan"
+Write-ColorOutput "For more information, see BUILD.md and tool-specific READMEs`n" "Cyan"

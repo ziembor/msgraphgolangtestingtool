@@ -16,19 +16,16 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
         include:
           - os: windows-latest
-            graph_binary: msgraphtool.exe
-            smtp_binary: smtptool.exe
+            ext: .exe
             artifact_name: gomailtesttool-windows
             zip_name: gomailtesttool-windows.zip
           - os: ubuntu-latest
-            graph_binary: msgraphtool
-            smtp_binary: smtptool
+            ext: ''
             artifact_name: gomailtesttool-linux-amd64
             zip_name: gomailtesttool-linux-amd64.zip
             goarch: amd64
           - os: macos-latest
-            graph_binary: msgraphtool
-            smtp_binary: smtptool
+            ext: ''
             artifact_name: gomailtesttool-macos-arm64
             zip_name: gomailtesttool-macos-arm64.zip
             goarch: arm64
@@ -41,85 +38,65 @@ jobs:
       with:
         go-version: '1.24'
 
-    - name: Build Microsoft Graph Tool (Windows)
+    - name: Build all tools (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        cd cmd/msgraphtool
-        go build -ldflags="-s -w" -o ../../${{ matrix.graph_binary }}
-        cd ../..
+        go build -ldflags="-s -w" -o msgraphtool${{ matrix.ext }} ./cmd/msgraphtool
+        go build -ldflags="-s -w" -o smtptool${{ matrix.ext }} ./cmd/smtptool
+        go build -ldflags="-s -w" -o imaptool${{ matrix.ext }} ./cmd/imaptool
+        go build -ldflags="-s -w" -o pop3tool${{ matrix.ext }} ./cmd/pop3tool
+        go build -ldflags="-s -w" -o jmaptool${{ matrix.ext }} ./cmd/jmaptool
 
-    - name: Build SMTP Tool (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        cd cmd/smtptool
-        go build -ldflags="-s -w" -o ../../${{ matrix.smtp_binary }}
-        cd ../..
-
-    - name: Build Microsoft Graph Tool (Linux/macOS)
+    - name: Build all tools (Linux/macOS)
       if: matrix.os != 'windows-latest'
       env:
         GOARCH: ${{ matrix.goarch }}
       run: |
-        cd cmd/msgraphtool
-        go build -ldflags="-s -w" -o ../../${{ matrix.graph_binary }}
-        cd ../..
-
-    - name: Build SMTP Tool (Linux/macOS)
-      if: matrix.os != 'windows-latest'
-      env:
-        GOARCH: ${{ matrix.goarch }}
-      run: |
-        cd cmd/smtptool
-        go build -ldflags="-s -w" -o ../../${{ matrix.smtp_binary }}
-        cd ../..
+        go build -ldflags="-s -w" -o msgraphtool${{ matrix.ext }} ./cmd/msgraphtool
+        go build -ldflags="-s -w" -o smtptool${{ matrix.ext }} ./cmd/smtptool
+        go build -ldflags="-s -w" -o imaptool${{ matrix.ext }} ./cmd/imaptool
+        go build -ldflags="-s -w" -o pop3tool${{ matrix.ext }} ./cmd/pop3tool
+        go build -ldflags="-s -w" -o jmaptool${{ matrix.ext }} ./cmd/jmaptool
 
     - name: Verify build output (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        if (Test-Path ${{ matrix.graph_binary }}) {
-          Write-Host "✓ Graph tool build successful: ${{ matrix.graph_binary }}"
-          Get-Item ${{ matrix.graph_binary }} | Select-Object Name, Length
-        } else {
-          Write-Error "✗ Graph tool build failed"
-          exit 1
-        }
-        if (Test-Path ${{ matrix.smtp_binary }}) {
-          Write-Host "✓ SMTP tool build successful: ${{ matrix.smtp_binary }}"
-          Get-Item ${{ matrix.smtp_binary }} | Select-Object Name, Length
-        } else {
-          Write-Error "✗ SMTP tool build failed"
-          exit 1
+        $tools = @("msgraphtool", "smtptool", "imaptool", "pop3tool", "jmaptool")
+        foreach ($tool in $tools) {
+          $binary = "$tool${{ matrix.ext }}"
+          if (Test-Path $binary) {
+            Write-Host "✓ $tool build successful"
+            Get-Item $binary | Select-Object Name, Length
+          } else {
+            Write-Error "✗ $tool build failed"
+            exit 1
+          }
         }
 
     - name: Verify build output (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: |
-        if [ -f "${{ matrix.graph_binary }}" ]; then
-          echo "✓ Graph tool build successful: ${{ matrix.graph_binary }}"
-          ls -lh ${{ matrix.graph_binary }}
-        else
-          echo "✗ Graph tool build failed"
-          exit 1
-        fi
-        if [ -f "${{ matrix.smtp_binary }}" ]; then
-          echo "✓ SMTP tool build successful: ${{ matrix.smtp_binary }}"
-          ls -lh ${{ matrix.smtp_binary }}
-        else
-          echo "✗ SMTP tool build failed"
-          exit 1
-        fi
+        for tool in msgraphtool smtptool imaptool pop3tool jmaptool; do
+          if [ -f "$tool${{ matrix.ext }}" ]; then
+            echo "✓ $tool build successful"
+            ls -lh "$tool${{ matrix.ext }}"
+          else
+            echo "✗ $tool build failed"
+            exit 1
+          fi
+        done
 
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path ${{ matrix.graph_binary }},${{ matrix.smtp_binary }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
+        Compress-Archive -Path msgraphtool${{ matrix.ext }},smtptool${{ matrix.ext }},imaptool${{ matrix.ext }},pop3tool${{ matrix.ext }},jmaptool${{ matrix.ext }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
         Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
         Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
 
     - name: Create ZIP archive (Linux/macOS)
       if: matrix.os != 'windows-latest'
       run: |
-        zip ${{ matrix.zip_name }} ${{ matrix.graph_binary }} ${{ matrix.smtp_binary }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
+        zip ${{ matrix.zip_name }} msgraphtool${{ matrix.ext }} smtptool${{ matrix.ext }} imaptool${{ matrix.ext }} pop3tool${{ matrix.ext }} jmaptool${{ matrix.ext }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
         ls -lh ${{ matrix.zip_name }}
 
@@ -134,19 +111,24 @@ jobs:
       with:
         files: ${{ matrix.zip_name }}
         body: |
-          ## Microsoft Graph & SMTP Testing Tools
+          ## gomailtesttool Suite - Email Infrastructure Testing Tools
 
-          Portable CLI tools for comprehensive email infrastructure testing - both cloud (Exchange Online via Microsoft Graph) and on-premises (SMTP servers).
+          Portable CLI tools for comprehensive email infrastructure testing - covering cloud services (Exchange Online via Microsoft Graph), SMTP, IMAP, POP3, and JMAP protocols.
 
           ### What's Included
 
-          Each ZIP archive contains:
+          Each ZIP archive contains 5 tools:
           - **msgraphtool** - Microsoft Graph API tool for Exchange Online
-          - **smtptool** - SMTP connectivity testing tool with comprehensive TLS diagnostics
+          - **smtptool** - SMTP connectivity and TLS testing
+          - **imaptool** - IMAP server testing with XOAUTH2 support
+          - **pop3tool** - POP3 server testing with XOAUTH2 support
+          - **jmaptool** - JMAP protocol testing
+
+          Plus documentation:
           - **README.md** - Main documentation
           - **SMTP_TOOL_README.md** - Complete SMTP tool guide
-          - **BUILD.md** - Build instructions for both tools
-          - **EXAMPLES.md** - Microsoft Graph tool usage examples
+          - **BUILD.md** - Build instructions
+          - **EXAMPLES.md** - Usage examples
           - **LICENSE** - MIT License
 
           ### Installation
@@ -154,71 +136,82 @@ jobs:
           **Windows:**
           1. Download `gomailtesttool-windows.zip`
           2. Extract the ZIP file
-          3. Run `msgraphtool.exe` or `smtptool.exe` directly
+          3. Run any tool directly (e.g., `smtptool.exe -help`)
 
           **Linux (amd64):**
           1. Download `gomailtesttool-linux-amd64.zip`
           2. Extract: `unzip gomailtesttool-linux-amd64.zip`
-          3. Make executable: `chmod +x msgraphtool smtptool`
-          4. Run: `./msgraphtool` or `./smtptool`
+          3. Make executable: `chmod +x *tool`
+          4. Run: `./smtptool -help`
 
           **macOS (Apple Silicon/arm64):**
           1. Download `gomailtesttool-macos-arm64.zip`
           2. Extract: `unzip gomailtesttool-macos-arm64.zip`
-          3. Make executable: `chmod +x msgraphtool smtptool`
-          4. Run: `./msgraphtool` or `./smtptool`
+          3. Make executable: `chmod +x *tool`
+          4. Run: `./smtptool -help`
 
           **Note for macOS:** If you see "cannot be opened because the developer cannot be verified":
           - Right-click the binary and select "Open", or
-          - Run: `xattr -d com.apple.quarantine msgraphtool smtptool`
+          - Run: `xattr -d com.apple.quarantine *tool`
 
-          ### Quick Start
+          ### Quick Start Examples
 
-          **Microsoft Graph Tool:**
+          **SMTP Testing:**
           ```bash
-          # Windows
-          .\msgraphtool.exe -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getinbox
-
-          # Linux/macOS
-          ./msgraphtool -tenantid "..." -clientid "..." -secret "..." -mailbox "user@example.com" -action getinbox
-          ```
-
-          **SMTP Tool:**
-          ```bash
-          # Windows - Test connectivity
-          .\smtptool.exe -action testconnect -host smtp.example.com -port 25
-
-          # Windows - Comprehensive TLS diagnostics
-          .\smtptool.exe -action teststarttls -host smtp.example.com -port 587
-
-          # Linux/macOS - Test connectivity
+          # Test connectivity
           ./smtptool -action testconnect -host smtp.example.com -port 25
 
-          # Linux/macOS - Comprehensive TLS diagnostics
+          # TLS diagnostics
           ./smtptool -action teststarttls -host smtp.example.com -port 587
           ```
 
-          ### Documentation
-          - **README.md** - Overview and quick start for both tools
-          - **SMTP_TOOL_README.md** - Complete SMTP tool documentation with all actions
-          - **EXAMPLES.md** - Detailed Microsoft Graph tool examples
-          - **BUILD.md** - Build from source instructions
-          - Online: [GitHub Repository](https://github.com/${{ github.repository }})
+          **IMAP Testing:**
+          ```bash
+          # Test connection
+          ./imaptool -action testconnect -host imap.gmail.com -imaps
+
+          # List folders with OAuth2
+          ./imaptool -action listfolders -host imap.gmail.com -imaps \
+            -username user@gmail.com -accesstoken "ya29..."
+          ```
+
+          **POP3 Testing:**
+          ```bash
+          # Test connection
+          ./pop3tool -action testconnect -host pop.gmail.com -pop3s
+
+          # List mail
+          ./pop3tool -action listmail -host pop.gmail.com -pop3s \
+            -username user@gmail.com -password "app-password"
+          ```
+
+          **JMAP Testing:**
+          ```bash
+          # Discover session
+          ./jmaptool -action testconnect -host jmap.fastmail.com
+
+          # Get mailboxes
+          ./jmaptool -action getmailboxes -host jmap.fastmail.com \
+            -username user@fastmail.com -accesstoken "token"
+          ```
+
+          **Microsoft Graph:**
+          ```bash
+          ./msgraphtool -tenantid "..." -clientid "..." -secret "..." \
+            -mailbox "user@example.com" -action getinbox
+          ```
 
           ### Tools Overview
 
-          **msgraphtool** - Microsoft Graph API operations:
-          - Send emails, create calendar events
-          - List inbox messages and calendar events
-          - Check availability, export data
-          - Multiple authentication methods (Client Secret, PFX Certificate, Windows Certificate Store)
+          | Tool | Protocol | Ports | Auth Methods |
+          |------|----------|-------|--------------|
+          | smtptool | SMTP | 25, 587, 465 | PLAIN, LOGIN, CRAM-MD5, XOAUTH2 |
+          | imaptool | IMAP | 143, 993 | PLAIN, LOGIN, XOAUTH2 |
+          | pop3tool | POP3 | 110, 995 | USER/PASS, APOP, XOAUTH2 |
+          | jmaptool | JMAP | 443 | Basic, Bearer |
+          | msgraphtool | Graph API | 443 | Client Secret, Certificate |
 
-          **smtptool** - SMTP connectivity testing:
-          - Test basic SMTP connectivity with capability detection
-          - Comprehensive TLS/SSL handshake analysis
-          - Certificate chain validation and expiry warnings
-          - SMTP authentication testing
-          - Send test emails
-          - Exchange server detection (2003-2019)
+          ### Documentation
+          - Online: [GitHub Repository](https://github.com/${{ github.repository }})
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
