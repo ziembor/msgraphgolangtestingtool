@@ -129,7 +129,7 @@ jobs:
     - name: Create ZIP archive (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path bin\msgraphtool${{ matrix.ext }},bin\smtptool${{ matrix.ext }},bin\imaptool${{ matrix.ext }},bin\pop3tool${{ matrix.ext }},bin\jmaptool${{ matrix.ext }},README.md,SMTP_TOOL_README.md,BUILD.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
+        Compress-Archive -Path bin\msgraphtool${{ matrix.ext }},bin\smtptool${{ matrix.ext }},bin\imaptool${{ matrix.ext }},bin\pop3tool${{ matrix.ext }},bin\jmaptool${{ matrix.ext }},README.md,*_TOOL_README.md,EXAMPLES.md,LICENSE -DestinationPath ${{ matrix.zip_name }}
         Write-Host "Created ZIP archive: ${{ matrix.zip_name }}"
         Get-Item ${{ matrix.zip_name }} | Select-Object Name, Length
 
@@ -137,7 +137,7 @@ jobs:
       if: matrix.os != 'windows-latest'
       run: |
         cd bin && zip ../${{ matrix.zip_name }} msgraphtool${{ matrix.ext }} smtptool${{ matrix.ext }} imaptool${{ matrix.ext }} pop3tool${{ matrix.ext }} jmaptool${{ matrix.ext }} && cd ..
-        zip -u ${{ matrix.zip_name }} README.md SMTP_TOOL_README.md BUILD.md EXAMPLES.md LICENSE
+        zip -u ${{ matrix.zip_name }} README.md *_TOOL_README.md EXAMPLES.md LICENSE
         echo "Created ZIP archive: ${{ matrix.zip_name }}"
         ls -lh ${{ matrix.zip_name }}
 
@@ -167,8 +167,7 @@ jobs:
 
           Plus documentation:
           - **README.md** - Main documentation
-          - **SMTP_TOOL_README.md** - Complete SMTP tool guide
-          - **BUILD.md** - Build instructions
+          - ** *_TOOL_README.md** - specific protocols tool guide
           - **EXAMPLES.md** - Usage examples
           - **LICENSE** - MIT License
 
