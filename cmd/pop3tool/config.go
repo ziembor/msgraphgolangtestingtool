@@ -264,6 +264,18 @@ func validateConfiguration(config *Config) error {
 		return fmt.Errorf("invalid action: %s (valid: %s)", config.Action, strings.Join(validActions, ", "))
 	}
 
+	// Security warning for TLS certificate verification bypass
+	if config.SkipVerify {
+		fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+		fmt.Println("║  ⚠️  WARNING: TLS CERTIFICATE VERIFICATION DISABLED            ║")
+		fmt.Println("║                                                                ║")
+		fmt.Println("║  The -skipverify flag disables TLS certificate validation.    ║")
+		fmt.Println("║  This makes the connection vulnerable to man-in-the-middle    ║")
+		fmt.Println("║  attacks. Only use this for testing with self-signed certs.   ║")
+		fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+		fmt.Println()
+	}
+
 	// Validate host
 	if config.Host == "" {
 		return fmt.Errorf("host is required")

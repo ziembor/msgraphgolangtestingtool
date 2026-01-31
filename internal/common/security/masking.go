@@ -100,3 +100,70 @@ func MaskEmail(email string) string {
 
 	return maskedLocal + "@" + maskedDomain
 }
+
+// MaskErrorMessage sanitizes an error message by masking potential credentials.
+// This should be used before logging error messages that may contain sensitive data.
+// It looks for common patterns like passwords, tokens, secrets, and auth-related strings.
+func MaskErrorMessage(errMsg string, credentials ...string) string {
+	result := errMsg
+
+	// Mask any explicitly provided credentials
+	for _, cred := range credentials {
+		if cred != "" && len(cred) > 3 {
+			// Replace credential with masked version
+			masked := "****"
+			if len(cred) > 8 {
+				masked = cred[:2] + "****" + cred[len(cred)-2:]
+			}
+			result = replaceIgnoreCase(result, cred, masked)
+		}
+	}
+
+	return result
+}
+
+// replaceIgnoreCase replaces all occurrences of old in s with new (case-insensitive).
+func replaceIgnoreCase(s, old, replacement string) string {
+	if old == "" {
+		return s
+	}
+
+	result := s
+	lowerS := toLower(s)
+	lowerOld := toLower(old)
+
+	// Find and replace all occurrences
+	for {
+		idx := indexOf(lowerS, lowerOld)
+		if idx == -1 {
+			break
+		}
+		result = result[:idx] + replacement + result[idx+len(old):]
+		lowerS = lowerS[:idx] + replacement + lowerS[idx+len(old):]
+	}
+
+	return result
+}
+
+// toLower converts string to lowercase without importing strings package.
+func toLower(s string) string {
+	b := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
+	}
+	return string(b)
+}
+
+// indexOf finds the first occurrence of substr in s.
+func indexOf(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}

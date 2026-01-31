@@ -27,6 +27,7 @@ type SMTPClient struct {
 	limiter      *ratelimit.Limiter
 	smtpClient   *smtp.Client           // Reusable stdlib client after STARTTLS or SMTPS
 	tlsState     *tls.ConnectionState   // Stored TLS state for SMTPS connections
+	ctx          context.Context        // Context for cancellation propagation
 }
 
 // debugLogCommand logs an SMTP command being sent to the server.
@@ -146,13 +147,20 @@ func (c *SMTPClient) Connect(ctx context.Context) error {
 
 	c.banner = resp.Message
 
+	// Store context for use in subsequent operations
+	c.ctx = ctx
+
 	return nil
 }
 
 // EHLO sends EHLO command and parses capabilities.
 func (c *SMTPClient) EHLO(hostname string) (protocol.Capabilities, error) {
-	// Apply rate limiting
-	if err := c.limiter.Wait(context.Background()); err != nil {
+	// Apply rate limiting using stored context
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
@@ -183,8 +191,12 @@ func (c *SMTPClient) EHLO(hostname string) (protocol.Capabilities, error) {
 
 // StartTLS upgrades the connection to TLS.
 func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, error) {
-	// Apply rate limiting
-	if err := c.limiter.Wait(context.Background()); err != nil {
+	// Apply rate limiting using stored context
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
@@ -210,7 +222,7 @@ func (c *SMTPClient) StartTLS(tlsConfig *tls.Config) (*tls.ConnectionState, erro
 	// Perform TLS handshake
 	c.debugLogMessage("Performing TLS handshake...")
 	tlsConn := tls.Client(c.conn, tlsConfig)
-	if err := tlsConn.HandshakeContext(context.Background()); err != nil {
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
 
@@ -257,8 +269,12 @@ func (cw *connWrapper) Close() error {
 // Auth performs SMTP authentication.
 // For XOAUTH2, pass the OAuth2 access token in the accessToken parameter.
 func (c *SMTPClient) Auth(username, password, accessToken string, mechanisms []string) error {
-	// Apply rate limiting
-	if err := c.limiter.Wait(context.Background()); err != nil {
+	// Apply rate limiting using stored context
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
@@ -319,8 +335,12 @@ func (c *SMTPClient) Auth(username, password, accessToken string, mechanisms []s
 
 // SendMail sends an email message.
 func (c *SMTPClient) SendMail(from string, to []string, data []byte) error {
-	// Apply rate limiting
-	if err := c.limiter.Wait(context.Background()); err != nil {
+	// Apply rate limiting using stored context
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limit wait failed: %w", err)
 	}
 
