@@ -4,12 +4,57 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
+  # Test job runs on all platforms
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Run Tests
+      run: go test -v -race ./...
+
+    - name: Check Test Coverage
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        go test -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out | tail -1
+
+  # Lint job runs only on Linux
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+
+  # Build job runs after test and lint, only on tag push
   build:
+    needs: [test, lint]
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -200,7 +245,7 @@ jobs:
           | imaptool | IMAP | 143, 993 | PLAIN, LOGIN, XOAUTH2 |
           | pop3tool | POP3 | 110, 995 | USER/PASS, APOP, XOAUTH2 |
           | jmaptool | JMAP | 443 | Basic, Bearer |
-          | msgraphtool | Graph API | 443 | Client Secret, Certificate |
+          | msgraphtool | Graph API | 443 | Client Secret, Certificate, Bearer |
 
           ### Documentation
           - Online: [GitHub Repository](https://github.com/${{ github.repository }})

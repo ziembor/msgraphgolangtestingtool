@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"msgraphtool/internal/common/logger"
 	"msgraphtool/internal/jmap/protocol"
@@ -98,22 +97,4 @@ func testAuth(ctx context.Context, config *Config, csvLogger logger.Logger, slog
 
 	fmt.Println("\n✓ JMAP authentication test completed")
 	return nil
-}
-
-// maskUsername masks the username for logging.
-func maskUsername(username string) string {
-	if username == "" {
-		return ""
-	}
-	if idx := strings.Index(username, "@"); idx > 0 {
-		masked := username[:1]
-		if idx > 2 {
-			masked += strings.Repeat("*", idx-2) + username[idx-1:idx]
-		}
-		return masked + username[idx:]
-	}
-	if len(username) <= 2 {
-		return username
-	}
-	return username[:1] + strings.Repeat("*", len(username)-2) + username[len(username)-1:]
 }
