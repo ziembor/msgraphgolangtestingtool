@@ -24,10 +24,11 @@ type Config struct {
 	Action      string // Operation to perform (getevents, sendmail, sendinvite, getinbox, getschedule)
 
 	// Authentication configuration (mutually exclusive)
-	Secret     string // Client Secret for authentication
-	PfxPath    string // Path to .pfx certificate file
-	PfxPass    string // Password for .pfx certificate file
-	Thumbprint string // SHA1 thumbprint of certificate in Windows Certificate Store
+	Secret      string // Client Secret for authentication
+	PfxPath     string // Path to .pfx certificate file
+	PfxPass     string // Password for .pfx certificate file
+	Thumbprint  string // SHA1 thumbprint of certificate in Windows Certificate Store
+	BearerToken string // Pre-obtained Bearer token for authentication
 
 	// Email recipients (using stringSlice type for comma-separated lists)
 	To              stringSlice // To recipients for email
@@ -111,6 +112,7 @@ func parseAndConfigureFlags() *Config {
 	pfxPath := flag.String("pfx", "", "Path to the .pfx certificate file (env: MSGRAPHPFX)")
 	pfxPass := flag.String("pfxpass", "", "Password for the .pfx file (env: MSGRAPHPFXPASS)")
 	thumbprint := flag.String("thumbprint", "", "Thumbprint of the certificate in the CurrentUser\\My store (env: MSGRAPHTHUMBPRINT)")
+	bearerToken := flag.String("bearertoken", "", "Pre-obtained Bearer token for authentication (env: MSGRAPHBEARERTOKEN)")
 	mailbox := flag.String("mailbox", "", "The target EXO mailbox email address (env: MSGRAPHMAILBOX)")
 
 	// Recipient flags (using custom stringSlice type)
@@ -167,6 +169,7 @@ func parseAndConfigureFlags() *Config {
 		"MSGRAPHPFX":           pfxPath,
 		"MSGRAPHPFXPASS":       pfxPass,
 		"MSGRAPHTHUMBPRINT":    thumbprint,
+		"MSGRAPHBEARERTOKEN":   bearerToken,
 		"MSGRAPHMAILBOX":       mailbox,
 		"MSGRAPHSUBJECT":       subject,
 		"MSGRAPHBODY":          body,
@@ -256,6 +259,7 @@ func parseAndConfigureFlags() *Config {
 		PfxPath:         *pfxPath,
 		PfxPass:         *pfxPass,
 		Thumbprint:      *thumbprint,
+		BearerToken:     *bearerToken,
 		To:              to,
 		Cc:              cc,
 		Bcc:             bcc,
@@ -280,7 +284,7 @@ func parseAndConfigureFlags() *Config {
 
 	// Print verbose configuration if enabled
 	if config.VerboseMode {
-		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID, config.OutputFormat)
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *bearerToken, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID, config.OutputFormat)
 	}
 
 	return config
@@ -302,6 +306,7 @@ func applyEnvVars(envMap map[string]*string) {
 		"pfx":            "MSGRAPHPFX",
 		"pfxpass":        "MSGRAPHPFXPASS",
 		"thumbprint":     "MSGRAPHTHUMBPRINT",
+		"bearertoken":    "MSGRAPHBEARERTOKEN",
 		"mailbox":        "MSGRAPHMAILBOX",
 		"subject":        "MSGRAPHSUBJECT",
 		"body":           "MSGRAPHBODY",
@@ -377,12 +382,15 @@ func validateConfiguration(config *Config) error {
 	if config.Thumbprint != "" {
 		authMethodCount++
 	}
+	if config.BearerToken != "" {
+		authMethodCount++
+	}
 
 	if authMethodCount == 0 {
-		return fmt.Errorf("missing authentication: must provide one of -secret, -pfx, or -thumbprint")
+		return fmt.Errorf("missing authentication: must provide one of -secret, -pfx, -thumbprint, or -bearertoken")
 	}
 	if authMethodCount > 1 {
-		return fmt.Errorf("multiple authentication methods provided: use only one of -secret, -pfx, or -thumbprint")
+		return fmt.Errorf("multiple authentication methods provided: use only one of -secret, -pfx, -thumbprint, or -bearertoken")
 	}
 
 	// Validate PFX file path if provided
@@ -477,7 +485,7 @@ func validateConfiguration(config *Config) error {
 }
 
 // Print verbose configuration summary
-func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID, outputFormat string) {
+func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, bearerToken, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID, outputFormat string) {
 	fmt.Println("========================================")
 	fmt.Println("VERBOSE MODE ENABLED")
 	fmt.Println("========================================")
@@ -532,6 +540,9 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 	} else if thumbprint != "" {
 		fmt.Println("  Method: Windows Certificate Store")
 		fmt.Printf("  Thumbprint: %s\n", thumbprint)
+	} else if bearerToken != "" {
+		fmt.Println("  Method: Bearer Token")
+		fmt.Printf("  Token: %s (length: %d)\n", maskSecret(bearerToken), len(bearerToken))
 	}
 
 	// Network configuration
@@ -581,6 +592,7 @@ func getEnvVariables() map[string]string {
 		"MSGRAPHPFX",
 		"MSGRAPHPFXPASS",
 		"MSGRAPHTHUMBPRINT",
+		"MSGRAPHBEARERTOKEN",
 		"MSGRAPHMAILBOX",
 		"MSGRAPHTO",
 		"MSGRAPHCC",
@@ -699,7 +711,7 @@ _msgraphtool_completions() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     # All available flags
-    opts="-action -tenantid -clientid -secret -pfx -pfxpass -thumbprint -mailbox
+    opts="-action -tenantid -clientid -secret -pfx -pfxpass -thumbprint -bearertoken -mailbox
           -to -cc -bcc -subject -body -bodyHTML -attachments
           -invite-subject -start -end -messageid -proxy -count -verbose -version -help
           -maxretries -retrydelay -loglevel -completion"
@@ -734,7 +746,7 @@ _msgraphtool_completions() {
             # Numeric values - no completion
             return 0
             ;;
-        -tenantid|-clientid|-secret|-pfxpass|-thumbprint|-mailbox|-to|-cc|-bcc|-subject|-body|-bodyHTML|-invite-subject|-start|-end|-messageid|-proxy)
+        -tenantid|-clientid|-secret|-pfxpass|-thumbprint|-bearertoken|-mailbox|-to|-cc|-bcc|-subject|-body|-bodyHTML|-invite-subject|-start|-end|-messageid|-proxy)
             # String values - no completion
             return 0
             ;;
@@ -775,7 +787,7 @@ Register-ArgumentCompleter -CommandName msgraphtool.exe,msgraphtool,'.\msgraphto
     # All flags that accept values
     $flags = @(
         '-action', '-tenantid', '-clientid', '-secret', '-pfx', '-pfxpass',
-        '-thumbprint', '-mailbox', '-to', '-cc', '-bcc', '-subject', '-body',
+        '-thumbprint', '-bearertoken', '-mailbox', '-to', '-cc', '-bcc', '-subject', '-body',
         '-bodyHTML', '-attachments', '-invite-subject', '-start', '-end',
         '-messageid', '-proxy', '-count', '-maxretries', '-retrydelay', '-loglevel',
         '-completion', '-verbose', '-version', '-help'
@@ -846,6 +858,7 @@ Register-ArgumentCompleter -CommandName msgraphtool.exe,msgraphtool,'.\msgraphto
             '-pfx' { 'Path to .pfx certificate file' }
             '-pfxpass' { 'Password for .pfx certificate' }
             '-thumbprint' { 'Certificate thumbprint (Windows Certificate Store)' }
+            '-bearertoken' { 'Pre-obtained Bearer token for authentication' }
             '-mailbox' { 'Target user email address' }
             '-to' { 'Comma-separated TO recipients' }
             '-cc' { 'Comma-separated CC recipients' }

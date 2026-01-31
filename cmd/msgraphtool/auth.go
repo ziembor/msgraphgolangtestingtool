@@ -25,6 +25,39 @@ type TokenClaims struct {
 	jwt.RegisteredClaims                             // Standard JWT claims (exp, iss, etc.)
 }
 
+// BearerTokenCredential implements azcore.TokenCredential for pre-obtained bearer tokens.
+// This allows using tokens obtained externally (e.g., via OAuth2 flows, CLI tools).
+type BearerTokenCredential struct {
+	token string
+}
+
+// NewBearerTokenCredential creates a new credential from a pre-obtained bearer token.
+func NewBearerTokenCredential(token string) *BearerTokenCredential {
+	return &BearerTokenCredential{token: token}
+}
+
+// GetToken returns the pre-obtained bearer token. Since the token is pre-obtained,
+// expiration is not tracked - users should ensure the token is valid.
+func (c *BearerTokenCredential) GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	// Parse expiration from JWT if possible, otherwise set a default
+	expiresOn := time.Now().Add(1 * time.Hour) // Default: 1 hour from now
+
+	// Try to extract expiration from JWT claims
+	token, _, err := new(jwt.Parser).ParseUnverified(c.token, &TokenClaims{})
+	if err == nil {
+		if claims, ok := token.Claims.(*TokenClaims); ok {
+			if claims.ExpiresAt != nil {
+				expiresOn = claims.ExpiresAt.Time
+			}
+		}
+	}
+
+	return azcore.AccessToken{
+		Token:     c.token,
+		ExpiresOn: expiresOn,
+	}, nil
+}
+
 // setupGraphClient creates credentials and initializes the Microsoft Graph SDK client
 func setupGraphClient(ctx context.Context, config *Config, logger *slog.Logger) (*msgraphsdk.GraphServiceClient, error) {
 	// Setup Authentication
@@ -62,14 +95,21 @@ func setupGraphClient(ctx context.Context, config *Config, logger *slog.Logger) 
 }
 
 func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint string, config *Config, logger *slog.Logger) (azcore.TokenCredential, error) {
-	// 1. Client Secret
+	// 1. Bearer Token (pre-obtained)
+	if config.BearerToken != "" {
+		logDebug(logger, "Authentication method: Bearer Token")
+		logDebug(logger, "Using pre-obtained bearer token")
+		return NewBearerTokenCredential(config.BearerToken), nil
+	}
+
+	// 2. Client Secret
 	if secret != "" {
 		logDebug(logger, "Authentication method: Client Secret")
 		logDebug(logger, "Creating ClientSecretCredential")
 		return azidentity.NewClientSecretCredential(tenantID, clientID, secret, nil)
 	}
 
-	// 2. PFX File
+	// 3. PFX File
 	if pfxPath != "" {
 		logDebug(logger, "Authentication method: PFX Certificate File", "path", pfxPath)
 		pfxData, err := os.ReadFile(pfxPath)
@@ -81,7 +121,7 @@ func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint stri
 		return createCertCredential(tenantID, clientID, pfxData, pfxPass, logger)
 	}
 
-	// 3. Windows Cert Store (Thumbprint)
+	// 4. Windows Cert Store (Thumbprint)
 	if thumbprint != "" {
 		logDebug(logger, "Authentication method: Windows Certificate Store", "thumbprint", thumbprint)
 		logDebug(logger, "Exporting certificate from CurrentUser\\My store")
@@ -93,7 +133,7 @@ func getCredential(tenantID, clientID, secret, pfxPath, pfxPass, thumbprint stri
 		return createCertCredential(tenantID, clientID, pfxData, tempPass, logger)
 	}
 
-	return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, or -thumbprint)")
+	return nil, fmt.Errorf("no valid authentication method provided (use -secret, -pfx, -thumbprint, or -bearertoken)")
 }
 
 func createCertCredential(tenantID, clientID string, pfxData []byte, password string, logger *slog.Logger) (*azidentity.ClientCertificateCredential, error) {
