@@ -56,6 +56,7 @@ type Config struct {
 	VerboseMode  bool   // Enable verbose diagnostic output (maps to DEBUG log level)
 	LogLevel     string // Logging level: DEBUG, INFO, WARN, ERROR (default: INFO)
 	OutputFormat string // Output format: text, json (default: text)
+	WhatIf       bool   // Dry run mode - preview actions without executing (PowerShell-style)
 	Count        int    // Number of items to retrieve (for getevents and getinbox actions)
 }
 
@@ -145,6 +146,9 @@ func parseAndConfigureFlags() *Config {
 
 	// Output format
 	outputFormat := flag.String("output", "text", "Output format: text, json (default: text) (env: MSGRAPHOUTPUT)")
+
+	// Dry run mode (WhatIf)
+	whatif := flag.Bool("whatif", false, "Dry run mode - preview actions without executing (PowerShell-style) (env: MSGRAPHWHATIF)")
 
 	// Count for getevents and getinbox
 	count := flag.Int("count", 3, "Number of items to retrieve for getevents and getinbox actions (default: 3) (env: MSGRAPHCOUNT)")
@@ -238,6 +242,21 @@ func parseAndConfigureFlags() *Config {
 		}
 	}
 
+	// Apply MSGRAPHWHATIF environment variable if flag wasn't provided
+	whatifFlagProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "whatif" {
+			whatifFlagProvided = true
+		}
+	})
+	if !whatifFlagProvided {
+		if envWhatIf := os.Getenv("MSGRAPHWHATIF"); envWhatIf != "" {
+			if parsedWhatIf, err := strconv.ParseBool(envWhatIf); err == nil {
+				*whatif = parsedWhatIf
+			}
+		}
+	}
+
 	// Create and populate Config struct with all parsed values
 	config := &Config{
 		ShowVersion: *showVersion,
@@ -267,12 +286,13 @@ func parseAndConfigureFlags() *Config {
 		VerboseMode:     *verbose,
 		LogLevel:        *logLevel,
 		OutputFormat:    strings.ToLower(*outputFormat),
+		WhatIf:          *whatif,
 		Count:           *count,
 	}
 
 	// Print verbose configuration if enabled
 	if config.VerboseMode {
-		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID, config.OutputFormat)
+		printVerboseConfig(*tenantID, *clientID, *secret, *pfxPath, *thumbprint, *mailbox, *action, *proxyURL, to.String(), cc.String(), bcc.String(), *subject, *body, *bodyHTML, attachmentFiles.String(), *inviteSubject, *startTime, *endTime, *messageID, config.OutputFormat, *whatif)
 	}
 
 	return config
@@ -469,7 +489,7 @@ func validateConfiguration(config *Config) error {
 }
 
 // Print verbose configuration summary
-func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID, outputFormat string) {
+func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox, action, proxyURL, to, cc, bcc, subject, body, bodyHTML, attachments, inviteSubject, startTime, endTime, messageID, outputFormat string, whatif bool) {
 	fmt.Println("========================================")
 	fmt.Println("VERBOSE MODE ENABLED")
 	fmt.Println("========================================")
@@ -509,6 +529,7 @@ func printVerboseConfig(tenantID, clientID, secret, pfxPath, thumbprint, mailbox
 	fmt.Printf("Mailbox: %s\n", mailbox)
 	fmt.Printf("Action: %s\n", action)
 	fmt.Printf("Output Format: %s\n", outputFormat)
+	fmt.Printf("WhatIf (Dry Run): %t\n", whatif)
 
 	// Authentication method
 	fmt.Println()

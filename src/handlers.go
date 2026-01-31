@@ -198,31 +198,80 @@ func sendEmail(ctx context.Context, client *msgraphsdk.GraphServiceClient, sende
 	requestBody := users.NewItemSendMailPostRequestBody()
 	requestBody.SetMessage(message)
 
-	logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/sendMail", senderMailbox)
-	logVerbose(config.VerboseMode, "Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
-	err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
-
 	status := StatusSuccess
 	attachmentCount := len(attachmentPaths)
-	if err != nil {
-		// Enrich error with rate limit and service error details
-		enrichedErr := enrichGraphAPIError(err, logger, "sendEmail")
-		log.Printf("Error sending mail: %v", enrichedErr)
-		status = fmt.Sprintf("%s: %v", StatusError, enrichedErr)
-	} else {
-		logVerbose(config.VerboseMode, "Email sent successfully via Graph API")
-		fmt.Printf("Email sent successfully from %s.\n", senderMailbox)
+
+	// WhatIf / Dry Run Mode
+	if config.WhatIf {
+		fmt.Println("========================================")
+		fmt.Println("WHATIF MODE - DRY RUN (Email NOT sent)")
+		fmt.Println("========================================")
+		fmt.Printf("From: %s\n", senderMailbox)
 		fmt.Printf("To: %v\n", to)
-		fmt.Printf("Cc: %v\n", cc)
-		fmt.Printf("Bcc: %v\n", bcc)
+		if len(cc) > 0 {
+			fmt.Printf("Cc: %v\n", cc)
+		}
+		if len(bcc) > 0 {
+			fmt.Printf("Bcc: %v\n", bcc)
+		}
 		fmt.Printf("Subject: %s\n", subject)
+
+		// Show body type and preview
 		if htmlContent != "" {
 			fmt.Println("Body Type: HTML")
+			bodyPreview := htmlContent
+			if len(bodyPreview) > 200 {
+				bodyPreview = bodyPreview[:200] + "..."
+			}
+			fmt.Printf("Body Preview: %s\n", bodyPreview)
 		} else {
 			fmt.Println("Body Type: Text")
+			bodyPreview := textContent
+			if len(bodyPreview) > 200 {
+				bodyPreview = bodyPreview[:200] + "..."
+			}
+			fmt.Printf("Body Preview: %s\n", bodyPreview)
 		}
+
 		if attachmentCount > 0 {
 			fmt.Printf("Attachments: %d file(s)\n", attachmentCount)
+			for i, path := range attachmentPaths {
+				if fileInfo, err := os.Stat(path); err == nil {
+					fmt.Printf("  [%d] %s (%d bytes)\n", i+1, filepath.Base(path), fileInfo.Size())
+				} else {
+					fmt.Printf("  [%d] %s (error reading file)\n", i+1, filepath.Base(path))
+				}
+			}
+		}
+		fmt.Println("========================================")
+		status = "DRY RUN"
+		logVerbose(config.VerboseMode, "WhatIf mode enabled - email preview displayed, API call skipped")
+	} else {
+		// Normal execution - actually send the email
+		logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/sendMail", senderMailbox)
+		logVerbose(config.VerboseMode, "Email details - To: %v, CC: %v, BCC: %v", to, cc, bcc)
+		err := client.Users().ByUserId(senderMailbox).SendMail().Post(ctx, requestBody, nil)
+
+		if err != nil {
+			// Enrich error with rate limit and service error details
+			enrichedErr := enrichGraphAPIError(err, logger, "sendEmail")
+			log.Printf("Error sending mail: %v", enrichedErr)
+			status = fmt.Sprintf("%s: %v", StatusError, enrichedErr)
+		} else {
+			logVerbose(config.VerboseMode, "Email sent successfully via Graph API")
+			fmt.Printf("Email sent successfully from %s.\n", senderMailbox)
+			fmt.Printf("To: %v\n", to)
+			fmt.Printf("Cc: %v\n", cc)
+			fmt.Printf("Bcc: %v\n", bcc)
+			fmt.Printf("Subject: %s\n", subject)
+			if htmlContent != "" {
+				fmt.Println("Body Type: HTML")
+			} else {
+				fmt.Println("Body Type: Text")
+			}
+			if attachmentCount > 0 {
+				fmt.Printf("Attachments: %d file(s)\n", attachmentCount)
+			}
 		}
 	}
 
@@ -283,29 +332,46 @@ func createInvite(ctx context.Context, client *msgraphsdk.GraphServiceClient, ma
 	endDateTime.SetTimeZone(&timezone)
 	event.SetEnd(endDateTime)
 
-	// Create the event
-	logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/events", mailbox)
-	logVerbose(config.VerboseMode, "Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
-	createdEvent, err := client.Users().ByUserId(mailbox).Events().Post(ctx, event, nil)
-
 	status := StatusSuccess
 	eventID := "N/A"
-	if err != nil {
-		// Enrich error with rate limit and service error details
-		enrichedErr := enrichGraphAPIError(err, logger, "createInvite")
-		log.Printf("Error creating invite: %v", enrichedErr)
-		status = fmt.Sprintf("%s: %v", StatusError, enrichedErr)
-	} else {
-		if createdEvent.GetId() != nil {
-			eventID = *createdEvent.GetId()
-		}
-		logVerbose(config.VerboseMode, "Calendar event created successfully via Graph API")
-		logVerbose(config.VerboseMode, "Event ID: %s", eventID)
-		fmt.Printf("Calendar invitation created in mailbox: %s\n", mailbox)
+
+	// WhatIf / Dry Run Mode
+	if config.WhatIf {
+		duration := endTime.Sub(startTime)
+		fmt.Println("========================================")
+		fmt.Println("WHATIF MODE - DRY RUN (Calendar invite NOT created)")
+		fmt.Println("========================================")
+		fmt.Printf("Mailbox: %s\n", mailbox)
 		fmt.Printf("Subject: %s\n", subject)
-		fmt.Printf("Start: %s\n", startTime.Format("2006-01-02 15:04:05 MST"))
-		fmt.Printf("End: %s\n", endTime.Format("2006-01-02 15:04:05 MST"))
-		fmt.Printf("Event ID: %s\n", eventID)
+		fmt.Printf("Start Time: %s\n", startTime.Format("2006-01-02 15:04:05 MST"))
+		fmt.Printf("End Time: %s\n", endTime.Format("2006-01-02 15:04:05 MST"))
+		fmt.Printf("Duration: %v\n", duration)
+		fmt.Println("========================================")
+		status = "DRY RUN"
+		logVerbose(config.VerboseMode, "WhatIf mode enabled - calendar invite preview displayed, API call skipped")
+	} else {
+		// Normal execution - actually create the event
+		logVerbose(config.VerboseMode, "Calling Graph API: POST /users/%s/events", mailbox)
+		logVerbose(config.VerboseMode, "Calendar invite - Subject: %s, Start: %s, End: %s", subject, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+		createdEvent, err := client.Users().ByUserId(mailbox).Events().Post(ctx, event, nil)
+
+		if err != nil {
+			// Enrich error with rate limit and service error details
+			enrichedErr := enrichGraphAPIError(err, logger, "createInvite")
+			log.Printf("Error creating invite: %v", enrichedErr)
+			status = fmt.Sprintf("%s: %v", StatusError, enrichedErr)
+		} else {
+			if createdEvent.GetId() != nil {
+				eventID = *createdEvent.GetId()
+			}
+			logVerbose(config.VerboseMode, "Calendar event created successfully via Graph API")
+			logVerbose(config.VerboseMode, "Event ID: %s", eventID)
+			fmt.Printf("Calendar invitation created in mailbox: %s\n", mailbox)
+			fmt.Printf("Subject: %s\n", subject)
+			fmt.Printf("Start: %s\n", startTime.Format("2006-01-02 15:04:05 MST"))
+			fmt.Printf("End: %s\n", endTime.Format("2006-01-02 15:04:05 MST"))
+			fmt.Printf("Event ID: %s\n", eventID)
+		}
 	}
 
 	// Write to CSV
